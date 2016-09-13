@@ -1,0 +1,107 @@
+@CHARSET "utf-8";
+
+/*  TICKETING INTEGRATION MODULE */
+
+div#ticketing_integration{
+	border: none;
+	color: #676767;
+    font-family: Open Sans,Arial,sans-serif;
+    font-size: 1.3em;
+    position: relative;
+    padding: .2em 0;
+    zoom: 1;
+    margin: 0;
+    line-height: 1.6666em;
+    vertical-align: baseline;
+}
+
+div#ticketing_integration>ul{
+	border: none;
+    background: none;
+    border-bottom: 5px solid #2c8fae;
+    margin: 0;
+    padding: 0;
+    color: #777777;
+    font-weight: bold;
+    outline: 0;
+    line-height: 1.3;
+    text-decoration: none;
+    font-size: 90%;
+    list-style: none;
+}
+
+div#ticketing_integration>ul:after {
+    content:'';
+    display:block;
+    clear: both;
+}
+
+div#ticketing_integration>ul li{
+	list-style: none;
+    float: left;
+    position: relative;
+    top: 0;
+    margin: 1px .5em 0 0;
+    padding-bottom: 1px;
+    white-space: nowrap;
+    display: list-item;
+    border: 1px solid #ddd;
+    border-bottom: 1px solid #fff;
+    background: #ddd;
+    font-weight: bold;
+    color: #888;
+}
+
+div#ticketing_integration>ul li:hover{
+	background: rgb(110,206,237);
+	border-color: rgb(110,206,237);
+}
+
+div#ticketing_integration>ul li.active{
+	border: 1px solid #2c8fae !important;
+    background: #2c8fae !important;
+    color: #fff !important;
+    cursor: text !important;
+    
+}
+
+div#ticketing_integration>ul li.right-tab{
+	float: right !important;
+}
+
+div#ticketing_integration>ul li a{
+	float: left;
+    padding: .2em 1.5em;
+    line-height: 1.5em;
+    text-transform: uppercase;
+    text-decoration: none;
+    font-weight: 700;
+    color: #888;
+    cursor: pointer;
+}
+
+div#ticketing_integration>ul li.active a{
+	 text-transform: uppercase;
+	 cursor:default !important;
+	 color:#FFF !important;
+}
+
+div#ticketing_integration>ul li a:hover{
+	color:#FFF;	
+}
+
+div.content>#edit-markup5{
+	display: block;
+    margin: 0.5em auto;
+    font-size: 120%;
+}
+tr.odd.views-row-first{
+	display:none;
+}
+
+/*   AJAX THROBBER   */
+
+.ajax-progress .throbber{
+	margin:0 0 0 2px;
+	height:13px;
+}

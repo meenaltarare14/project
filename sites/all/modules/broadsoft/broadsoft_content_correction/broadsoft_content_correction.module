@@ -1,0 +1,27 @@
+<?php
+
+define("BROADSOFT_CONTENT_CORRECTION_BASE_SITE_URL", "/php/");
+define("BROADSOFT_CONTENT_CORRECTION_NEW_NODE_URL", "href=\"/php/");
+define("BROADSOFT_CONTENT_CORRECTION_NEW_FILE_URL", "=\"/");
+define("BROADSOFT_CONTENT_CORRECTION_NODE_HREF", "href=\"/");
+define("BROADSOFT_CONTENT_CORRECTION_FILE_HREF", "=\"public://");
+
+/** =============================================================================================
+*/
+function broadsoft_content_correction_menu() {
+  $items = array();
+
+  $items['admin/config/search/broadsoft_content_correction'] = array(
+    'title' => 'BroadSoft Content Validation and Correction',
+    'description' => 'Scan the users, nodes, images and other content type for invalid href tags and fix them.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('broadsoft_content_correction_admin_config_form'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+    'file'=>'broadsoft_content_correction.admin.inc'
+  );
+
+  return $items;
+}
+
+?>

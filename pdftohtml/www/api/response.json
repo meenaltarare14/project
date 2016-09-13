@@ -1,0 +1,52 @@
+{
+	"metadata": [{
+        "title": "Title",
+        "subject": "Subject"
+		"pages": 2
+	}],
+	"pages": [{
+		"page": 1,
+		"content": [{
+			"h1": "7 Profile Server Components",
+			"p": "The Profile Server hosts several active components that provide internal and external services.",
+			"h2": "7.1 Core Daemons",
+			"p": "Manual control of the daemon’s life cycle is neither required nor expected but can be accomplished using the commands specified in the following sections.",
+			"h3": "7.1.1 Software Manager",
+			"p": "The Software Manager is part of the core components of the Profile Server. It is responsible for the patching of the BroadWorks applications and platform.",
+			"h4": "7.1.1.1 Life Cycle Control",
+			"p": "While it is not recommended during normal operation, it is possible to restart the Software Manager during the maintenance window.",
+			"h4": "7.1.1.2 Logs",
+			"p": "The Software Manager logs are located in directory /var/broadworks/logs/swmanager.",
+			"h2": "7.1.2 SNMP Agent",
+			"p": "The Simple Network Management Protocol (SNMP) agent is a core component of the Profile Server. It"
+		}]
+	}, {
+		"page": 2,
+		"content": [{
+			"h1": "8 Configuration and Management",
+			"h2": "8.1 Configuration Modes",
+			"p": "The Profile Server supports the following configuration modes:",
+			"ul": [{
+				"li": "Stand-alone: Configuration is locally managed through the CLI application.",
+				"li": "Managed: Configuration is remotely managed through the EMS."
+			}],
+			"p": "For Managed mode operations, see the BroadWorks Element Management System Administration Guide [2].",
+			"h2": "8.2 Profile Tuning",
+			"p": "The profile tuning provides a list of pre-defined profile definitions based on a set of identified deployment models."
+		}]
+	}]
+}
+
+array(
+
+	1 => array("h1" => "haldjhaldkjf"),
+	2 => array("h1" => "haldjhaldkjf"),
+	3 => array("h1" => "haldjhaldkjf"),
+	1 => array("h1" => "haldjhaldkjf"),
+	1 => array("h1" => "haldjhaldkjf"),
+
+)
+
+froeach($arr as $tags){
+	print "<$tags[0]>" .$tags[1]. " </$tags[0]>";
+}

@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the Online BroadWorks Patch Advisor feature.
+ */
+
+include_once 'online_broadworks_patch_advisor.features.inc';

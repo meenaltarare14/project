@@ -1,0 +1,20 @@
+<?php
+
+/**
+ * @file
+ * Tagging content module file.
+ */
+
+/**
+ * Implements hook_field_access.
+ */
+function broadsoft_tagging_content_field_access($op, $field, $entity_type, $entity, $account) {
+  if (($op == 'edit' || $op == 'view') && $field['field_name'] == 'broadsoft_tagging_content_field') {
+    // Only user with 'content moderator' can access the tagging field.
+    // @todo if required more, roles to be added here.
+    $rid = array_search('content moderator', user_roles());
+    if (!user_has_role($rid, $account)) {
+      return FALSE;
+    }
+  }
+}

@@ -1,0 +1,82 @@
+<?php
+
+function broadsoft_ask_flow_uninstall() {
+  // var_del
+}
+
+function broadsoft_ask_flow_schema(){
+  $schema['broadsoft_search_terms']= array(
+    'description'=>t("Stores search terms from users."),
+    'fields'=>array(
+      'stid'=>array(
+        'type'=>'serial',
+        'unsigned'=>TRUE,
+        'not null'=>TRUE,
+        'description'=>t("A unique search term id."),
+      ),
+      'search_term'=>array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => t('The generalised user query.'),
+      ),
+      'uid'=>array(
+        'type'=>'int',
+        'unsigned'=>TRUE,
+        'not null'=>TRUE,
+        'default'=>0,
+        'description'=>t("A {users}.uid."),
+      ),
+      'timestamp'=>array(
+        'type'=>'int',
+        'unsigned'=>TRUE,
+        'not null'=>TRUE,
+        'default'=>0,
+        'description'=>t("The date on which the search term was saved."),
+      ),
+    ),
+    'primary key'=>array('stid', 'search_term'),
+    'unique keys' => array(),
+    'indexes'=>array(
+      'search_term'=>array('search_term')
+    ),
+  );
+
+  $schema['broadsoft_search_term_rating']= array(
+    'description'=>t("Stores search-term to entity scores for each search term."),
+    'fields'=>array(
+      'strid'=>array(
+        'type'=>'serial',
+        'unsigned'=>TRUE,
+        'not null'=>TRUE,
+        'description'=>t("A unique rating id."),
+      ),
+      'stid'=>array(
+        'type'=>'int',
+        'unsigned'=>TRUE,
+        'not null'=>TRUE,
+        'default'=>0,
+        'description' => t('The search-term id.'),
+      ),
+      'entity_id'=>array(
+        'type'=>'int',
+        'unsigned'=>TRUE,
+        'not null'=>TRUE,
+        'default'=>0,
+        'description'=>t("The entity id."),
+      ),
+      'score'=>array(
+        'type'=>'int',
+        'unsigned'=>TRUE,
+        'not null'=>TRUE,
+        'default'=>0,
+        'description'=>t("Score for the search-term and entity pair."),
+      ),
+    ),
+    'primary key'=>array('strid'),
+    'unique keys' => array(),
+  );
+  
+  return $schema;
+}

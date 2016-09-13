@@ -1,0 +1,149 @@
+body{
+  font-family: 'MuseoSans';
+}
+
+@font-face {
+  font-family: 'MuseoSans';
+  font-weight: 300;
+  font-style: normal;
+  src: url("../fonts/museosans-300-webfont.eot");
+  src: url("../fonts/museosans-300-webfont.eot?#iefix") format("embedded-opentype"), url("../fonts/museosans-300-webfont.woff") format("woff"), url("../fonts/museosans-300-webfont.ttf") format("truetype"), url("../fonts/museosans-300-webfont.svg#MuseoSans300") format("svg");
+}
+
+h1, h2{
+  font-family: 'MuseoSans';
+}
+
+.login-header{
+  width: 100%;
+  float: left;
+  position: fixed;
+  z-index: 2;
+}
+
+.main-login {
+  height: 100vh;
+  min-height: 400px;
+}
+
+.main-login .container-fluid, .main-login .row, .main-login .col-md-6{
+  height: 100%;
+}
+
+.main-login .left-content{
+  background-image: url("../img/community-login.png");
+  position: relative;
+  background-size: contain;
+  padding: 55vh 17% 10vh 6%;
+  color: #fff;
+}
+
+.main-login .left-content:before{
+  position: absolute;
+  top: 0;
+  left:0;
+  content:"";
+  height: 100%;
+  width: 100%;
+  background: rgba(61, 61, 61, 0.32);
+}
+
+.main-login h1{
+  font-size: 45px;
+  font-weight: 700;
+  position: relative;
+  margin-bottom: 20px;
+}
+
+.main-login p{
+    position: relative;
+}
+
+
+.login-div{
+  padding: 8%;
+  margin: 18%;
+  border: 1px solid #ddd;
+  position: absolute;
+  width: 64%;
+  height: 567px;
+  top:0;
+  bottom:0;
+  padding-bottom:6em;
+}
+
+.request-div{
+  padding: 8%;
+  margin: auto 18%;
+  border: 1px solid #ddd;
+  position: absolute;
+  width: 64%;
+  height: 812px;
+  top:0;
+  bottom:0;
+  padding-bottom:6em;
+
+}
+
+.login-div h2, .request-div h2{
+  font-size: 20px;
+  font-weight: 700;
+  color: #f78b37;
+  margin-bottom: 1.5em;
+}
+
+.login-div .form-control, .request-div .form-control{
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  padding: 13px;
+  height: 45px;
+  box-shadow: none;
+}
+
+.login-div .forgot-password{
+  float: right;
+  font-size: 12px;
+  line-height: 2.5;
+}
+
+.login-div .btn-green, .request-div .btn-green{
+  text-align: center;
+    background: #7fcc50;
+    border: none;
+    color: #fff;
+    font-size: 16px;
+    padding: 13px 67px;
+    margin: 4em auto;
+    display: block;
+    clear: both;
+    font-weight: 600;
+    border-radius: 6px;
+}
+
+.btn {
+  width: initial;
+}
+
+.form-item, .form-actions {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.login-footer{
+  position: absolute;
+  width: 100%;
+  border-top: 1px solid #ddd;
+  left: 0px;
+  bottom: 0px;
+  height: 6em;
+  padding: 2.1em 4em 2em;
+  text-align: center;
+}
+
+.login-footer .btn-orange{
+  border: 2px solid #f78b37;
+  color: #f78b37;
+  background: none;
+  padding: 5px 32px;
+  margin-top: -6px;
+}

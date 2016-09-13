@@ -1,0 +1,7 @@
+name = Broadsoft Content Migration
+description = migration of content from xchange and cpbx sites.
+core = 7.x
+package = Commons - Building blocks
+version = 7.x-1.0
+features[features_api][] = api:2
+project path = sites/all/modules/broadsoft

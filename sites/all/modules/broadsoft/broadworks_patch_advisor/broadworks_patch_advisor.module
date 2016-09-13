@@ -1,0 +1,1299 @@
+<?php
+
+include_once("broadworks_patch_advisor.extra.module");
+
+define("STAT_PA", 'Patch Advisor');
+
+// TODO: check lids location
+define('TMP_TECHSUPPORT_FILE_DIR', '/tmp/patchadvisor_cron');
+include_once 'sites/all/isTools/lib/BaseImapEngine.class.php';
+include_once 'sites/all/isTools/lib/BroadworksTechSupportFile.class.php';
+
+
+/**
+ * NOTE: external functions and classes.
+ * these functions loads from 'broadsoft_utils' module:
+ * bs_extractUrlParams();
+ * delete_file();
+ * bs_findDiskFiles();
+ * DebugPrint2();
+ *
+ * these functions loads from 'broadsoft_software' module:
+ * getServerTidFromName();
+ * download_software();
+ *
+ * the module has external classes:
+ * BroadworksTechSupportFile
+ * BaseImapEngine
+ *
+ * $os_tid has hardcoded IDs.
+ */
+
+
+/**
+ * Implementation of hook_menu().
+ */
+function broadworks_patch_advisor_menu() {
+  $items = array();
+  $items['admin/settings/broadworks_patch_advisor'] = array(
+    'title' => 'BroadWorks Patch Advisor Settings',
+    'description' => 'Allows to set the system level information for the BroadWorks Patch Advisor module.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('broadworks_patch_advisor_settings'),
+    'access callback' => 'user_access',
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'broadworks_patch_advisor.admin.inc'
+  );
+
+  $items['broadworks/patch_advisor'] = array(
+    'title' => 'Online BroadWorks Patch Advisor',
+    'description' => 'Online BroadWorks Patch Advisor.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('broadworks_online_patch_advisor_form'),
+    'access callback' => TRUE,
+    'type' => MENU_CALLBACK,
+  );
+
+  $items["broadworks/patch_advisor/upload"] = array(
+    'page callback' => 'patch_advisor_upload',
+    'access arguments' => array('access content'), // access is granted to everyone - BUT controlled in callback fct
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Implementation of hook_permission().
+ */
+function broadworks_patch_advisor_permission() {
+  return array(
+    'view broadworks_patch_advisor' => array(
+      'title' => t('View broadworks_patch_advisor'),
+    ),
+    'create broadworks_patch_advisor' => array(
+      'title' => t('Create broadworks_patch_advisor'),
+    ),
+    'edit any broadworks_patch_advisor' => array(
+      'title' => t('Edit any broadworks_patch_advisor'),
+    ),
+    'delete any broadworks_patch_advisor' => array(
+      'title' => t('Delete any broadworks_patch_advisor'),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_node_access().
+ */
+function broadworks_patch_advisor_node_access($op, $node, $account) {
+  switch ($op) {
+    case 'view':
+      return user_access('view broadworks_patch_advisor', $account);
+    case 'create':
+      return user_access('create broadworks_patch_advisor', $account);
+    case 'update':
+      return user_access('edit any broadworks_patch_advisor', $account);
+    case 'delete':
+      return user_access('delete any broadworks_patch_advisor', $account);
+  }
+}
+
+/**
+ * Implementation of hook_node_info().
+ */
+function broadworks_patch_advisor_node_info() {
+  return array(
+    'broadworks_patch_advisor' => array(
+      'name' => t('BroadWorks Patch Advisor'),
+      'base' => 'broadworks_patch_advisor',
+      'description' => 'This node provides the BroadWorks Patch Advisor tool off of xchange',
+      'has_title' => TRUE,
+      'tilte_label' => t('Title'),
+      'has_body' => TRUE,
+      'body_label' => t('Description'),
+      'min_word_count' => 0,
+      'locked' => FALSE
+    )
+  );
+}
+
+/**
+ * Implementation of hook_form().
+ */
+function broadworks_patch_advisor_form($node) {
+  // Get metadata for this node type
+  // (we use it for labeling title and body fields).
+  // We defined this in broadworks_patch_advisor_node_info().
+  $type = node_type_get_types();
+  $type = $type['broadworks_patch_advisor'];
+
+  $form['title'] = array(
+    '#type' => 'textfield',
+    '#title' => check_plain($type->title_label),
+    '#required' => TRUE,
+    '#default_value' => isset($node->title) ? $node->title : '',
+    '#weight' => -5,
+    '#maxlength' => 255,
+  );
+
+  return $form;
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function broadworks_patch_advisor_form_alter(&$form, $form_state, $form_id) {
+  if ($form_id == 'broadworks_patch_advisor_node_form') {
+    $type = node_type_get_types();
+    $type = $type['broadworks_patch_advisor'];
+
+    $form['body']['und'][0]['#title'] = check_plain($type->body_label);
+  }
+}
+
+/**
+ * Implementation of hook_view().
+ **/
+function broadworks_patch_advisor_view($node, $view_mode) {
+  global $user;
+
+  if (isset($_POST) && isset($_POST['op']) && ($_POST['op'] == 'Download Patches')) {
+    handle_download_patches($user, $node);
+    exit;
+  }
+  if (isset($_POST['formName']) && ($_POST['formName'] == 'getUploadedTechSupport')) {
+    if (handle_download_techsupport($user, $node)) {
+      exit;
+    }
+  }
+
+  drupal_add_js(drupal_get_path('module', 'broadworks_patch_advisor') . '/broadworks_patch_advisor.js');
+  drupal_add_css(drupal_get_path('module', 'broadworks_patch_advisor') . '/broadworks_patch_advisor.css', 'module');
+
+  if (isset($_GET['view'])) {
+    handle_view_request($user, $node, $_GET['view']);
+  }
+  else {
+    if (isset($_GET['remove'])) {
+      handle_remove_upload($user, $_GET['remove']);
+    }
+    handle_show_uploads($user, $node);
+    handle_show_upload_form($user, $node);
+  }
+  return $node;
+}
+
+/**
+ * Implementation of hook_cron().
+ */
+function broadworks_patch_advisor_cron() {
+
+  $rootDir = variable_get('advisor_rootdir', ADVISOR_ROOT_DIR);
+  $mailServer = variable_get('advisor_mail_server', ADVISOR_MAIL_SERVER_ADDRESS);
+  $mailUserAccount = variable_get('advisor_mail_user', ADVISOR_MAIL_USER);
+  $mailUserPassword = variable_get('advisor_mail_password', ADVISOR_MAIL_PASSWORD);
+  $LRSmailUserAccount = variable_get('lrs_mail_user', LRS_MAIL_USER);
+
+  $imap = new BaseImapEngine(ADVISOR_MAIL_SERVER_ADDRESS, ADVISOR_MAIL_USER, ADVISOR_MAIL_PASSWORD);
+  if (empty($imap)) {
+    watchdog('patch advisor', 'Cannot instantiate the imap class in broadworks_patch_advisor_cron', NULL, WATCHDOG_ERROR);
+    return;
+  }
+  $imap->setTempDirectory(TMP_TECHSUPPORT_FILE_DIR);
+
+  //$imap->addHook(BaseImapEngine::HOOK_TRACE, 'imap_hook_traceTechSupportFile');
+  $imap->addHook(BaseImapEngine::HOOK_ERROR, 'imap_hook_errorTechSupportFile');
+  $imap->addHook(BaseImapEngine::HOOK_VALIDATE_EMAIL, 'imap_hook_validateTechSupportEmail');
+  $imap->addHook(BaseImapEngine::HOOK_VALIDATE_ATTACHMENT, 'imap_hook_validateTechSupportFile');
+  $imap->addHook(BaseImapEngine::HOOK_EXECUTE_ATTACHMENTS, 'imap_hook_executeTechSupportFiles');
+  $TESTING_MODE = FALSE;
+  $imap->processInbox(!$TESTING_MODE);    // Do not delete if in testing
+}
+
+/** =============================================================================================
+ * signature and specs: see broadsoft_generate_stat_reports()
+ */
+function broadworks_patch_advisor_gen_bs_report() {
+  $ret = array();
+  $ret['rcpt'] = XCHANGESUPPORT_EMAIL;
+  $ret['subject'] = 'Xchange Patch Advisor Daily Stats';
+
+  $totEmailProcessed = 0;
+  $totSpamEmails = 0;
+  $totUnknownUsersInEmails = 0;
+  $totManualUpload = 0;
+  $totJIRAUpload = 0;
+  $totLicensingSent = 0;
+
+  // gather data for the last 24 hours
+  $now = time() - (24 * 60 * 60);
+  $query = "SELECT value FROM {broadsoft_statistics} WHERE type = :spa AND timestamp > :now ";
+  $result = db_query($query, array(':spa' => STAT_PA, ':now' => $now));
+  foreach ($result as $row) {
+    $statEntry = broadsoft_utils_helper_str2array($row->value);
+    if ($statEntry['source'] == 'email') {
+      $totEmailProcessed++;
+    }
+    if ($statEntry['numSpam'] == 1) {
+      $totSpamEmails++;
+    }
+    $totUnknownUsersInEmails += $statEntry['numUnknownUsers'];
+    $totLicensingSent += $statEntry['licensingDataSent'];
+    $totJIRAUpload += $statEntry['fromJIRA'];
+    if ($statEntry['numSpam'] == 1) {
+      $totSpamEmails++;
+    }
+    if ($statEntry['source'] == 'upload') {
+      $totManualUpload++;
+    }
+  }
+
+  $ret['body']['Content-Type'] = 'text/html; charset=UTF-8;';
+  $ret['body']['content'] = 'Statistics for the last 24 hours:<br>';
+  $ret['body']['content'] .= '(excluding test data)<br>';
+  $ret['body']['content'] .= '<table border="1">';
+
+  $ret['body']['content'] .= '<tr>';
+  $ret['body']['content'] .= '<td>total Email Processed</td>';
+  $ret['body']['content'] .= '<td>' . $totEmailProcessed . '</td>';
+  $ret['body']['content'] .= '</tr>';
+
+  $ret['body']['content'] .= '<tr>';
+  $ret['body']['content'] .= '<td>total Spam Emails</td>';
+  $ret['body']['content'] .= '<td>' . $totSpamEmails . '</td>';
+  $ret['body']['content'] .= '</tr>';
+
+  $ret['body']['content'] .= '<tr>';
+  $ret['body']['content'] .= '<td>total Unknown Users in Emails</td>';
+  $ret['body']['content'] .= '<td>' . $totUnknownUsersInEmails . '</td>';
+  $ret['body']['content'] .= '</tr>';
+
+  $ret['body']['content'] .= '<tr>';
+  $ret['body']['content'] .= '<td>total Manual Upload</td>';
+  $ret['body']['content'] .= '<td>' . $totManualUpload . '</td>';
+  $ret['body']['content'] .= '</tr>';
+
+  $ret['body']['content'] .= '<tr>';
+  $ret['body']['content'] .= '<td>total Upload from JIRA</td>';
+  $ret['body']['content'] .= '<td>' . $totJIRAUpload . '</td>';
+  $ret['body']['content'] .= '</tr>';
+
+  $ret['body']['content'] .= '<tr>';
+  $ret['body']['content'] .= '<td>total Licensing Data Emails sent to the LRS</td>';
+  $ret['body']['content'] .= '<td>' . $totLicensingSent . '</td>';
+  $ret['body']['content'] .= '</tr>';
+
+  $ret['body']['content'] .= '</table>';
+
+  return $ret;
+}
+
+/**
+ * Function used to upload a tech-support on to xchange
+ **/
+function handle_doc_upload($user) {
+  // Get the unique filename on disk
+  $pa = new BroadworksTechSupportFile();
+  $target = $pa->buildTechSupportPerUserTarget(variable_get('advisor_rootdir', ADVISOR_ROOT_DIR), $user->uid, $_FILES['filename']['name']);
+
+  $isTest = FALSE;
+  $statisticDataArray = array();
+  $statisticDataArray['source'] = 'upload';
+  $statisticDataArray['licensingDataSent'] = 0;
+
+  // Try to upload it locally
+  if (move_uploaded_file($_FILES['filename']['tmp_name'], $target)) {
+    // Successfully loaded
+    // Parse the file and do minimal level of validation
+    OPA_DebugPrint("Entering handle_doc_upload()", __LINE__);
+    $parsedTechSupport = $pa->parseTechSupportFile($target);
+
+    insertTechSupportEntry($parsedTechSupport, $user->uid, $_FILES['filename']['name'], $target);
+
+    // there might not be any Patch in the TS, but we must make sure it is not pure garbage
+    if ($parsedTechSupport['isTechSupport']) {
+      //Parsed has a valid tech-support
+      db_update('broadworks_patch_advisor')
+        ->fields(array(
+          'status' => ADVISOR_STATUS_UPLOADED,
+          'hostname' => $parsedTechSupport['hostname'],
+        ))
+        ->condition('path', $target)
+        ->execute();
+
+      //Does it include licensing information or not?
+      if ($parsedTechSupport['hasServiceUsageFile']) {
+        $LRSmailUserAccount = variable_get('lrs_mail_user', LRS_MAIL_USER);
+        if ($user->mail == 'test_bw_customer@test.com') {
+          $isTest = TRUE;
+          $LRSmailUserAccount = XCHANGESUPPORT_EMAIL;
+        }
+        sendLicencingData($parsedTechSupport['licensing'], $LRSmailUserAccount);
+      }
+    }
+    else {
+      OPA_DebugPrint("Setting status to Invalid", __LINE__);
+
+      db_update('broadworks_patch_advisor')
+        ->fields(array(
+          'status' => ADVISOR_STATUS_UPLOADED,
+        ))
+        ->condition('path', $target)
+        ->execute();
+    }
+    $node_body = 'success';
+  }
+  else {
+    $node_body = '';
+    switch ($_FILES['files']['error']) {
+      case 1:
+        $node_body .= 'The file is bigger allowed';
+        break;
+      case 2:
+        $node_body .= 'The file is bigger allowed by form';
+        break;
+      case 3:
+        $node_body .= 'Only part of the file was uploaded';
+        break;
+      case 4:
+        $node_body .= 'No file was uploaded';
+        break;
+      default:
+        $node_body .= 'Problem detected while uploading file:' . $_FILES['files']['error'];
+        break;
+    }
+  }
+
+  if (!$isTest) {
+    broadsoft_statistics_addStat(STAT_PA, $statisticDataArray);
+  }
+  return $node_body;
+}
+
+/**
+ * Function used to show the list of uploaded tech-support onto xchange
+ **/
+function handle_show_uploads($user, $node) {
+  $showPrintableCol = FALSE;
+  global $user;
+  // TODO: hardcoded used IDs: 1631, 1262
+  if (userIsAdministrator() || $user->uid == 1631 || $user->uid == 1262) {
+    $showPrintableCol = TRUE;
+  }
+  $params = bs_extractUrlParams($_SERVER['QUERY_STRING']);
+  $splitQueryString = preg_split('/\?/', $_SERVER['REQUEST_URI']);
+
+  $orderBy = "";
+  $filenameOrderUrl = "?orderBy=filename&vert=ASC";
+  $timestampOrderUrl = "?orderBy=timestamp&vert=ASC";
+  if (!isset($params['orderBy']) || !isset($params['vert'])) {
+    $params['orderBy'] = 'timestamp';
+    $params['vert'] = 'DESC';
+  }
+
+  if ($params['orderBy'] == 'filename') {
+    $orderBy = " ORDER BY filename " . $params['vert'];
+    $filenameOrderUrl = "?orderBy=filename&vert=" . ($params['vert'] == 'ASC' ? 'DESC' : 'ASC');
+  }
+  else {
+    if ($params['orderBy'] == 'timestamp') {
+      $orderBy = " ORDER BY timestamp " . $params['vert'];
+      $timestampOrderUrl = "?orderBy=timestamp&vert=" . ($params['vert'] == 'ASC' ? 'DESC' : 'ASC');
+    }
+  }
+
+  $node_body = '';
+  $query = "SELECT * FROM broadworks_patch_advisor WHERE uid = :uid " . $orderBy;
+  $result = db_query($query, array(':uid' => $user->uid));
+  $rowCount = 0;
+  while ($line =  $result->fetchAssoc()) {
+    if ($rowCount++ == 0) {
+      $node_body .= '<br /><form id="getUploadedTechSupport" method="POST"> 
+      <table id="techSupports" class="sticky-enabled table table-striped">
+       <thead><tr><th><a href="' . $splitQueryString[0] . $filenameOrderUrl . '">Filename</a></th><th><a href="' . $splitQueryString[0] . $timestampOrderUrl . '">Uploaded Date</a></th><th>Hostname</th><th>Status</th><th>View Report</th>';
+      if ($showPrintableCol) {
+        $node_body .= '<th>View Printer Friendly Report</th>';
+      }
+      $node_body .= '<th>Remove</th></tr></thead>
+       <tbody>
+';
+    }
+    $isUploaded = FALSE;
+    if ($line['status'] == ADVISOR_STATUS_UPLOADED || $line['status'] == ADVISOR_STATUS_TICKET_ATTACHED || $line['status'] == ADVISOR_STATUS_EMAIL_UPLOADED) {
+      $isUploaded = TRUE;
+    }
+    $node_body .= '
+    <tr class="' . (($rowCount % 2) == 0 ? "even" : "odd") . '">
+      <td>' . $line['filename'] . '<input type="image" src="'.base_path().'sites/all/themes/mantis/img/icon-file.png'.'" id="test" name="' . 'get_tsid_' . $line['tsid'] . '"></td>
+      <td>' . date("F j, Y, g:i a", $line['timestamp']) . '</td>
+      <td>' . $line['hostname'] . '</td>
+      <td>' . $line['status'] . '</td><td>' . ($isUploaded ? '<a href="' . $splitQueryString[0] . '?view=' . $line['tsid'] . '">view</a>' : '') . '</td>';
+
+    if ($showPrintableCol) {
+      $node_body .= '<td>' . ($isUploaded ? '<a target="OPAPrint" href="'.base_path().'print/'.$node->nid.'?view=' . $line['tsid'] . '">printer-friendly</a>' : '') . '</td>';
+    }
+    $node_body .= '<td><a href="' . $splitQueryString[0] . '?remove=' . $line['tsid'] . '" onclick="return confirm(\'Are you sure?\')">remove</a></td>
+    </tr>
+';
+  }
+  if ($rowCount > 0) {
+    $node_body .= '</tbody>
+  </table>  
+  <input type="hidden" name="formName" value="getUploadedTechSupport" />  
+  </form>
+';
+  }
+
+  $node->body['und'][0]['safe_value'] .= $node_body;
+}
+
+
+/**
+ * This handler is used to show the form used to upload a tech-support
+ **/
+function handle_show_upload_form($user, $node) {
+  $upload = drupal_get_form('patch_advisor_upload_form');
+  $node->content['upload_form'] = array(
+    '#markup' => drupal_render($upload),
+    '#weight' => '10',
+  );
+}
+
+/**
+ * This handler is used to present the content of the parse tech-support
+ **/
+function handle_view_request($user, $node, $tsid) {
+  $splitQueryString = preg_split('/\?/', $_SERVER['REQUEST_URI']);
+
+  $patchReportDetails = '';
+  $deprecatedPatches = array();
+  $result = array();
+  $swMgr = array();
+  $missingPatches = 0;
+  $missingSysCritPatches = 0;
+
+  $node_body = '';
+  $query = "SELECT * FROM broadworks_patch_advisor WHERE uid = :uid AND tsid = :tsid ";
+  $line = db_query($query, array(':uid' => $user->uid, ':tsid' => $tsid))->fetchAssoc();
+  if (!is_array($line)) {
+    $node_body .= '<p><font color="red">Invalid entry</font></p>';
+  }
+  else {
+    $pa = new BroadworksTechSupportFile();
+    $result = $pa->parseTechSupportFile($line['path']);
+    $patchList = extractPatchInfo($result['release'], $result['serverType']);
+    $swMgr = getSwManager();
+
+    $patchReportDetails .= '<div class="wrap-contents"><a name="missingPatches"></a><h3 class="title"><span>List of missing patches</span></h3><div class="contents-block">
+                  <div class="table-responsive table-patches">';
+    $rowCount = 0;
+
+    if (count($patchList) == 0) {
+
+    }
+    else {
+      foreach ($patchList as $patchId => $patchData) {
+        if ($rowCount++ == 0) {
+          $patchReportDetails .= '<form accept-charset="UTF-8" method="post" id="broadworks_patch_advisor-form--1" class="broadworks_patch_advisor-form">
+  <div class="download-patches"><input type="submit" name="op" id="edit-submit" value="Download Patches"  class="form-submit ticket__submit-text ticket__submit"/></div>
+         <table id="techSupports" class="sticky-enabled sort-table table table-striped">
+<thead><tr>
+  <th class="select-all">
+    <div class="form-item" id="edit-objects-selector-wrapper">
+      <select name="objects[selector]" class="pa-select-all" id="pa-select-all-selector" ><option value="0">All</option><option value="1" selected="selected">None</option></select>
+    </div>
+  </th>
+  <th><a href="#missingPatches" class="link-sort-table sort-column-patchIdColumn th-name">Patch Id</a></th>
+  <th><a href="#missingPatches" class="link-sort-table sort-column-stateColumn">State</a></th>
+  <th><a href="#missingPatches" class="link-sort-table sort-column-descriptionColumn">Description</a></th>
+  <th><a href="#missingPatches" class="link-sort-table sort-column-systemCriticalColumn">System Critical</a></th>
+</tr></thead>
+           <tbody> ';
+        }
+
+        if (!isset($result['patches'][$patchId]) || ($result['patches'][$patchId] != 'active')) {
+          $depStr = "";
+          for ($i = 0; $i < count($patchData['dependencies']); $i++) {
+            if (!isset($result['patches'][$patchData['dependencies'][$i]])) {
+              $patchData['missingDependencies'][] = $patchData['dependencies'][$i];
+              $depStr .= $patchData['dependencies'][$i] . '(<span class="aMissinPatch missing-' . preg_replace('/\./', '-',
+                  $patchData['dependencies'][$i]) . '"><font color="green">selected</font></span>) ';
+            }
+          }
+          $missingPatches++;
+          if ($patchData['field_system_critical_patch'][LANGUAGE_NONE][0]['value'] == 1) {
+            $missingSysCritPatches++;
+          }
+          $patchReportDetails .= '<tr class="' . (($rowCount % 2) == 0 ? "even" : "odd") . ' rowclick">
+            <td class="select">
+              <div class="form-item selection">
+                <label class="option"><input type="checkbox" name="patchList[]" id="' . preg_replace('/\./', '-', $patchId) . '" value="' . $patchData['nid'] . '" class="form-checkbox vbo-select" /></label>
+              </div>
+            </td>
+            <td class="patchIdColumn"><a href="'.base_path() .'node/'. $patchData['nid'] . '">' . $patchId . '</a></td>
+            <td class="stateColumn">' . ((isset($result['patches'][$patchId])) ? $result['patches'][$patchId] : 'Not Downloaded') . '</td>
+            <td>';
+          $patchReportDetails .= '<table>';
+          $patchReportDetails .= '<tr><td style="border:none; border-spacing:0em;" class="descriptionColumn">' . $patchData['body'][LANGUAGE_NONE][0]['value'] . '</td></tr>';
+          if ($depStr != "") {
+            $patchReportDetails .= '<tr class="missing-patch-list"><td style="border:none; border-spacing:0em;" class="pa-dependencies-all"><font color="#808080" style="font-size: 12px"><i>Uninstalled Dependencies: ' . $depStr . '</i></font></td></tr>';
+          }
+          $patchReportDetails .= '</table>';
+          $patchReportDetails .= '</td>' .(($patchData['field_system_critical_patch'][LANGUAGE_NONE][0]['value']==1) ? '<td class="systemCriticalColumn red-text">Yes</td>' : '<td class="systemCriticalColumn">No</td>'). '</tr>
+						';
+        }
+      }
+      $patchReportDetails .= '</tbody>
+    </table>
+    <input type="hidden" name="release" value="' . $result['release'] . '"/>
+    <input type="hidden" name="minorVersion" value="' . $result['minorVersion'] . '"/>
+    <input type="hidden" name="os" value="' . $result['os'] . '"/>
+    <input type="hidden" name="serverType" value="' . $result['serverType'] . '"/>
+    <input type="hidden" id="selectedPatches" name="selectedPatches" value=""/> 
+    </form></div></div></div>
+  ';
+    }
+    $patchReportDetails .= '</div></div>';
+
+    foreach ($result['patches'] as $patchId => $patchData) {
+      if (!isset($patchList[$patchId])) {
+        $deprecatedPatches[] = $patchId;
+      }
+    }
+  }
+
+  $summaryHeader = '
+  <div class="wrap-contents"><h3 class="title"><span>Summary</span></h3>
+  <div class="contents-block"><ul>
+    <li><span><b><i>Hostname:  </i></b></span><span>' . $result['hostname'] . '</span></li>
+    <li><span><b><i>Number of Missing Patches:  </i></b></span><span>' . $missingPatches . '</span></li>
+    <li><span><b><i>Number of Missing System Critical Patches:  </i></b></span><span><font color="' . ($missingSysCritPatches > 0 ? 'red' : 'green') . '">' . $missingSysCritPatches . '</font></span></li>
+    <li><span><b><i>Software Manager:  </i></b></span><span>' . ($swMgr['version'] > $result['SMVersion'] ? '<font color="red">Outdated</font>' : '<font color="green">Up To Date</font>') . '</span></li>';
+  if (count($deprecatedPatches) > 0) {
+    $summaryHeader .= '
+    <li><span><b><i><font color="red">Deprecated Patches:  </font></i></b></span><span><font color="red">';
+    for ($i = 0; $i < count($deprecatedPatches); $i++) {
+      $summaryHeader .= $deprecatedPatches[$i] . ' ';
+    }
+    $summaryHeader .= '</font></span></li>';
+  }
+  $summaryHeader .= '
+  </ul></div></div>
+';
+
+  $headerDetails = '<div class="wrap-contents"><h3 class="title"><span>Source Information</span></h3>
+  <div class="contents-block"><ul>
+  <li><span><b><i>Source File:</i></b></span><span>' . $line['filename'] . '</span></li>
+  <li><span><b><i>Uploaded Date:</i></b></span><span>' . date("F j, Y, g:i a", $line['timestamp']) . '</span></li>
+  <li><span><b><i>Generated On Date:</i></b></span><span>' . $result['generatedOnDate'] . '</span></li>
+  <li><span><b><i>BroadWorks Release:</i></b></span><span>' . $result['release'] . ' (' . $result['minorVersion'] . ')</span></li>
+  <li><span><b><i>Server Type:</i></b></span><span>' . $result['serverType'] . '</span></li>
+  <li><span><b><i>OS:</i></b></span><span>' . $result['os'] . '</span></li>
+  <li><span><b><i>Latest Xchange Software Manager Version:</i></b></span><span><a href="' . $swMgr['filepath'] . '">' . $swMgr['version'] . '</a>  { md5sum :: ' . $swMgr['md5val'] . ' }</span></li>
+  <li><span><b><i>Currently Installed Software Manager Version:</i></b></span><span><b>' . $result['SMVersion'] . '</b></span></li>
+  </ul></div></div>
+';
+
+  $node_body .= '<div class="missing-patches-block">';
+  $node_body .= $summaryHeader;
+  $node_body .= $headerDetails;
+  $node_body .= $patchReportDetails;
+  $node_body .= '</div>';
+  $node_body .= '<input type="button" value="Back" class="btn btn-orange back ticket__submit-text" onclick="location.href=\'' . $splitQueryString[0] . '\'" />
+  ';
+
+  //$node->body['und'][0]['safe_value'] = $node_body;
+  $node->content['patches'] = array(
+    '#markup' => $node_body,
+    '#weight' => '10',
+  );
+}
+
+/**
+ * This handler is used to manage the removal of a previously posted file
+ **/
+function handle_remove_upload($user, $tsid) {
+  $query = "SELECT path FROM {broadworks_patch_advisor} WHERE uid = :uid and tsid = :tsid ";
+  $result = db_query($query, array(':uid' => $user->uid, ':tsid' => $tsid));
+  foreach ($result as $line) {
+    delete_file($line->path);
+  }
+
+  db_delete('broadworks_patch_advisor')
+    ->condition('uid', $user->uid)
+    ->condition('tsid', $tsid)
+    ->execute();
+}
+
+/**
+ * This handler is used to handle the patch download request and push out the requested
+ * custom patch bundle.
+ **/
+function handle_download_patches($user, $node) {
+  if (!isset($_POST['patchList']) || !isset($_POST['selectedPatches']) || !isset($_POST['release']) || !isset($_POST['os']) || !isset($_POST['serverType'])) {
+    echo "<html>INVALID REQUEST</html>";
+  }
+  // TODO: variable $os_tid contains hardcoded values
+  switch ($_POST['os']) {
+    case 'Linux X86':
+      $os_name = 'Linux/Red Hat';
+      break;
+    case 'Solaris X86':
+      $os_name = 'Solaris/x86';
+      break;
+    default:
+      $os_name = 'Solaris/sparc';
+      break;
+  }
+  $os_tids = taxonomy_get_term_by_name($os_name);
+  $os_tid = reset($os_tids)->tid;
+  $patchList = explode(';', $_POST['selectedPatches']);
+  foreach ($patchList as $pos => $data) {
+    if ($data == "") {
+      unset($patchList[$pos]);
+    }
+  }
+
+  // TODO: these functions loads from 'broadsoft_software' module
+  $server_tid = getServerTidFromName(resolveServerName($_POST['serverType']));
+  download_software($patchList, array(), array(), 'R' . $_POST['release'], $os_tid, '', $server_tid);
+}
+
+/** ===========================================================================
+ * Handles deltas between server names strings and terms
+ */
+function resolveServerName($serverType) {
+  // delta between Xchange term v.s. tech support server name for CDS and CCRS. Xchange has a unique term for both. 
+  // solution: detect and adjust DB query
+  if (preg_match('/CDS/', $serverType) || preg_match('/CCRS/', $serverType)) {
+    $serverType = 'CDS/CCRS';
+  }
+
+  return $serverType;
+}
+
+/**
+ * This handler is used to push a previous uploaded tech-support from xchange to the user PC
+ **/
+function handle_download_techsupport($user, $node) {
+  $tsid = -1;
+  $tmpMatches = array();
+  foreach ($_POST as $var => $value) {
+    if (preg_match('/get_tsid_(.*)/', $var, $tmpMatches)) {
+      $tsid = $tmpMatches[1];
+    }
+  }
+
+  $query = "SELECT filename, path FROM {broadworks_patch_advisor} WHERE uid = :uid and tsid = :tsid ";
+  $line = db_query($query, array(':uid' => $user->uid, ':tsid' => $tsid))->fetchAssoc();
+  if (!is_array($line)) {
+    return FALSE;
+  }
+  else {
+    header('Content-disposition: attachment; filename=' . $line['filename']);
+    header('Content-type: text/plain');
+    readfile($line['path']);
+  }
+
+  return TRUE;
+}
+
+/**
+ *
+ * @param array $form
+ * @param array $form_state
+ */
+function broadworks_patch_advisor_scan_techsupport($form, &$form_state) {
+  ini_set('max_execution_time', 0);
+
+  // Check for any DB entry not linked to a file.
+  $result = db_query("SELECT tsid, path FROM {broadworks_patch_advisor} ");
+  if ($result) {
+    // insert using generated on date from TS
+    $unreferencedDatabaseEntries = array();
+    foreach ($result as $paEntry) {
+      if (!empty($paEntry->path) && !is_file($paEntry->path)) {
+        // Not found, we need to delete this entry
+        $unreferencedDatabaseEntries[] = $paEntry->tsid;
+      }
+    }
+    foreach ($unreferencedDatabaseEntries as $tsid) {
+      $deleteResult = db_delete('broadworks_patch_advisor')
+        ->condition('tsid', $tsid)
+        ->execute();
+
+      if ($deleteResult === FALSE) {
+        watchdog('patch advisor', 'Cannot delete a patch advisor entry from the database ' . $tsid, NULL, WATCHDOG_ERROR);
+      }
+    }
+  }
+
+  // If the history is empty then populate it with what is on disk
+  // Scan the entire disk
+  // TODO: check path
+  $root_dir = "/var/broadworks/xchangeRepos";
+  $all_files = bs_findDiskFiles($root_dir, "/patchAdvisor");
+  watchdog('patch advisor', 'SCAN bs_findDiskFiles count ' . count($all_files), NULL, WATCHDOG_NOTICE);
+
+  $unreferencedFile = array();
+  // compare files on disk with files in the database
+  foreach ($all_files as $file) {
+    if (is_file($file)) {
+      $timestamp = filemtime($file);
+      $stats = stat($file);
+      $basename = basename($file);
+
+      if ($stats['size'] > 0) {
+        // Check if the file exist in our database
+        $query = "SELECT tsid, filename, path, servertype, uid FROM {broadworks_patch_advisor} WHERE path = :file ";
+        $result = db_query($query, array(':file' => $file));
+        if (!$result || empty($result)) {
+          // File is not present in our database so mark it for clean up
+          $unreferencedFile[] = $file;
+        }
+        else {
+          // insert using generated on date from TS
+          $resultArray = $result->fetchAssoc();
+          if (!empty($resultArray)) {
+            //check for internal users (uid = 2)
+            if ($resultArray['uid'] === 2) {
+              // File is not present in our database so mark it for clean up
+              $user_temp = new stdClass();
+              $user_temp->uid = $resultArray['uid'];
+              handle_remove_upload($user_temp, $resultArray['tsid']);
+            }
+            elseif (empty($resultArray['servertype'])) {
+              // Update the entry in the database with the new fields.
+              updateTechSupportEntry($resultArray, 'broadworks_patch_advisor', TRUE);
+            }
+          }
+          else {
+            // File is not present in our database so mark it for clean up
+            $unreferencedFile[] = $file;
+          }
+        }
+      }
+      else {
+        watchdog('patch advisor', 'Empty file: ' . $file, NULL, WATCHDOG_WARNING);
+      }
+    }
+  }
+  // Check if we have lost file that needs to be remove from disk
+  foreach ($unreferencedFile as $filename) {
+    $result = delete_file($filename);
+    if (!$result) {
+      watchdog('patch advisor', 'Cannot queue command delete file ' . $filename, NULL, WATCHDOG_ERROR);
+      continue;
+    }
+    watchdog('patch advisor', 'Adding to the queue command delete file ' . $filename, NULL, WATCHDOG_NOTICE);
+  }
+
+  return $form;
+}
+
+// This is required for your module to have its include files loaded;
+function broadworks_patch_advisor_views_api() {
+  return array(
+    'api' => '3.0'
+  );
+}
+
+/**
+ *
+ * @param array $parsedTechSupport
+ * @param string  $use_generated_on_date
+ *
+ * @return multitype:Ambigous <NULL, unknown> Ambigous <number, string> number
+ */
+function extractTechSupportInformation($parsedTechSupport, $use_generated_on_date = FALSE) {
+
+  $customerid = BroadworksTechSupportFile::getCustomerID($parsedTechSupport);
+  $hostname = BroadworksTechSupportFile::getHostname($parsedTechSupport);
+
+  $date = time();
+  if ($use_generated_on_date && !empty($parsedTechSupport['generatedOnDate'])) {
+    $date = date("U", strtotime($parsedTechSupport['generatedOnDate']));
+  }
+
+  // Find the extra values
+  $serviceusage = empty($parsedTechSupport['hasServiceUsageFile']) ? 0 : $parsedTechSupport['hasServiceUsageFile'] ? 1 : 0;
+  $release = empty($parsedTechSupport['release']) ? NULL : $parsedTechSupport['release'];
+  $serverType = empty($parsedTechSupport['serverType']) ? NULL : $parsedTechSupport['serverType'];
+  $os = empty($parsedTechSupport['os']) ? NULL : $parsedTechSupport['os'];
+
+  return array(
+    'customerid' => $customerid,
+    'hostname' => $hostname,
+    'date' => $date,
+    'serviceusage' => $serviceusage,
+    'release' => $release,
+    'servertype' => $serverType,
+    'os' => $os
+  );
+}
+
+/**
+ *
+ * @param array  $file_array
+ * @param string $table_name
+ */
+function updateTechSupportEntry($file_array, $table_name, $use_generated_on_date = FALSE) {
+  $filename = $file_array['path'];
+  if (file_exists($filename)) {
+    $pa = new BroadworksTechSupportFile();
+    $pa->addHook(BroadworksTechSupportFile::HOOK_ERROR, 'imap_hook_errorTechSupportFile');
+    $parsedTechSupport = $pa->parseTechSupportFile($filename);
+    // update the record 
+    $extraInfo = extractTechSupportInformation($parsedTechSupport, $use_generated_on_date);
+
+    $fields = array();
+
+    if (!empty($extraInfo['customerid'])) {
+      $fields['customerid'] = $extraInfo['customerid'];
+    }
+    if (isset($extraInfo['serviceusage'])) {
+      $fields['serviceusage'] = $extraInfo['serviceusage'];
+    }
+    if (!empty($extraInfo['release'])) {
+      $fields['bwrelease'] = $extraInfo['release'];
+    }
+    if (!empty($extraInfo['servertype'])) {
+      $fields['servertype'] = $extraInfo['servertype'];
+    }
+    if (!empty($extraInfo['os'])) {
+      $fields['os'] = $extraInfo['os'];
+    }
+
+    // Only update if something needs to be updated
+    if (count($fields) > 0) {
+      db_update($table_name)
+        ->fields($fields)
+        ->condition('tsid', $file_array['tsid'])
+        ->execute();
+    }
+  }
+}
+
+/**
+ *
+ * @param string $parsedTechSupport
+ * @param int    $user
+ * @param string $filename
+ * @param string $target
+ * @param string $status
+ */
+function insertTechSupportEntry($parsedTechSupport, $user_uid, $filename, $target, $status = ADVISOR_STATUS_INIT, $jiraTicket = array()) {
+
+  $use_generated_on_date = FALSE;
+  if (!empty($jiraTicket) && is_array($jiraTicket)) {
+    // Use the date inside the tech support file
+    $use_generated_on_date = TRUE;
+  }
+
+  $extraInfo = extractTechSupportInformation($parsedTechSupport, $use_generated_on_date);
+
+  watchdog('patch advisor', 'insertTechSupportEntry for ' . $target, NULL, WATCHDOG_NOTICE);
+
+  $fields = array(
+    'uid' => $user_uid,
+    'timestamp' => $extraInfo['date'],
+    'filename' => $filename,
+    'path' => $target,
+    'status' => $status,
+    'serviceusage' => $extraInfo['serviceusage'],
+    'servertype' => $extraInfo['servertype'],
+    'os' => $extraInfo['os'],
+    'bwrelease' => $extraInfo['release'],
+  );
+
+  if (!empty($jiraTicket) && is_array($jiraTicket)) {
+    $fields['ticketid'] = $jiraTicket[0];
+  }
+  if (!empty($extraInfo['customerid'])) {
+    $fields['customerid'] = $extraInfo['customerid'];
+  }
+  if (!empty($extraInfo['hostname'])) {
+    $fields['hostname'] = $extraInfo['hostname'];
+  }
+
+  // Insert into history
+  $result = db_insert('broadworks_patch_advisor')
+    ->fields($fields)
+    ->execute();
+
+  if ($result == FALSE) {
+    watchdog('patch advisor', 'Cannot insert the tech support file entry for ' . $target, NULL, WATCHDOG_WARNING);
+  }
+
+}
+
+/**
+ *
+ * @param string $userEmail
+ * @param array  $techsupportfile
+ * @param array  $statisticDataArray
+ * @param string $has_jirausers_txt_attachment
+ */
+function associateTechSupportFileToSingleUser($userEmail, $techsupportfile, &$statisticDataArray, $jiraTicket = array()) {
+  // Lookup user uids and move the tech-support on this
+  $queryUser = " SELECT uid FROM {users} WHERE mail = :email ";
+
+  $userEmail = trim($userEmail);
+  if ($userEmail == 'test_bw_customer@test.com') {
+    $isEmailTest = TRUE;
+  }
+  $result = FALSE;
+  if (!empty($userEmail)) {
+    $result = db_query($queryUser, array(':email' => $userEmail));
+  }
+
+  if (($result !== FALSE) && ($dbrow_f2 = $result->fetchObject())) {
+    $uid = $dbrow_f2->uid;
+    $techSupportRealFile = $techsupportfile['filename'];
+    $techSupportTmpFile = $techsupportfile['filepath'];
+    $parsedTechSupport = $techsupportfile['techsupport'];
+
+    $pa = new BroadworksTechSupportFile();
+    $pa->addHook(BroadworksTechSupportFile::HOOK_ERROR, 'imap_hook_errorTechSupportFile');
+    //$pa->addHook(BroadworksTechSupportFile::HOOK_TRACE, 'imap_hook_traceTechSupportFile');
+    $targetName = $pa->buildTechSupportPerUserTarget(variable_get('advisor_rootdir', ADVISOR_ROOT_DIR), $uid, $techSupportRealFile);
+
+    copy($techSupportTmpFile, $targetName);
+    //watchdog('patch advisor',  'Copy '.$techSupportTmpFile.' -> '.$targetName, NULL, WATCHDOG_NOTICE);
+
+    $entry_state = ADVISOR_STATUS_TICKET_ATTACHED;
+    // keep all tech support file from tickets. User can remove them from the Patch Advisor panel on xchange.
+    if (empty($jiraTicket)) {
+      // Remove any previous auto tech support file.
+      OPA_remove_previous_techSupports($uid, $parsedTechSupport['hostname'], ADVISOR_STATUS_EMAIL_UPLOADED);
+      $entry_state = ADVISOR_STATUS_EMAIL_UPLOADED;
+    }
+    insertTechSupportEntry($parsedTechSupport, $uid, $techSupportRealFile, $targetName, $entry_state, $jiraTicket);
+
+  }
+  else {
+    //watchdog('patch advisor', 'No xchange user for '.$userEmail, NULL, WATCHDOG_NOTICE);
+    $statisticDataArray['numUnknownUsers']++;
+    if (TO_NOTICE_MAIL_USER != NULL) {
+      $subject = "Online Patch Advisor - unknown user (" . $userEmail . ")";
+      $body = "The Online Patch Advisor is unable to lookup user (" . $userEmail . "). Tech Support process is aborted for this email. ";
+      // TODO: unknown variable - $has_xchangeusers_txt_attachment
+      if ($has_xchangeusers_txt_attachment) {
+        $body .= "User emails were given through xchangeusers.txt file.";
+      }
+      else {
+        $body .= "No xchangeusers.txt file was attached, taking from: email address for user association. ";
+      }
+      $body .= "Original tech support file is attached but has been renamed";
+      $rcpt = TO_NOTICE_MAIL_USER;
+      $cc = XCHANGESUPPORT_EMAIL;
+      bs_SendEmail($subject, $body, $rcpt, $cc, $techsupportfile['filepath']);
+    }
+  }
+}
+
+
+/**
+ *
+ * @param string $msg
+ * @param string $code
+ */
+function imap_hook_traceTechSupportFile($msg, $code) {
+  if (is_array($msg)) {
+    // The trace is an array to dump
+    watchdog('patch advisor', 'Array [' . $code . '] @print_r', array('@print_r' => print_r($msg, TRUE)), WATCHDOG_NOTICE);
+  }
+  else {
+    watchdog('patch advisor', $msg . ' [' . $code . ']', NULL, WATCHDOG_NOTICE);
+  }
+}
+
+/**
+ *
+ * @param string $msg
+ * @param string $code
+ */
+function imap_hook_errorTechSupportFile($msg, $code) {
+  if (is_array($msg)) {
+    // The trace is an array to dump
+    watchdog('patch advisor', 'Array [' . $code . '] @print_r', array('@print_r' => print_r($msg, TRUE)), WATCHDOG_ERROR);
+  }
+  else {
+    watchdog('patch advisor', $msg . ' [' . $code . ']', NULL, WATCHDOG_ERROR);
+  }
+}
+
+/**
+ *
+ * @param array $att
+ *
+ * @return number
+ */
+function imap_hook_validateTechSupportFile(&$att) {
+
+  $pa = new BroadworksTechSupportFile();
+  $pa->setTempDirectory(TMP_TECHSUPPORT_FILE_DIR);
+  $pa->addHook(BroadworksTechSupportFile::HOOK_ERROR, 'imap_hook_errorTechSupportFile');
+  //$pa->addHook(BroadworksTechSupportFile::HOOK_TRACE, 'imap_hook_traceTechSupportFile');
+  $att['filepath'] = $pa->processCompressedFile($att['filename'], $att['filepath']);
+  if (empty($att['filepath'])) {
+    watchdog('patch advisor', 'Cannot process the compressed file ' . $att['filepath'], NULL, WATCHDOG_WARNING);
+    return -1;
+  }
+
+  $att['is_validated'] = TRUE;    // Use this variable to detect a code change that blocks the callback from returning a reference value.
+  if ($att['filename'] == 'xchangeusers.txt') {
+    // Open the file ($att['filepath']) in case it was compressed
+    $usersFile = file($att['filepath']);
+    $att['xchangeusers'] = $usersFile;
+    return 1;
+  }
+  else {
+    if ($att['filename'] == 'jiraticket.txt') {
+      // Open the file ($att['filepath']) in case it was compressed
+      $ticketIdFile = file($att['filepath']);
+      $att['jiraticket'] = $ticketIdFile;
+      return 1;
+    }
+    else {
+      // Check if this is a Tech Support file
+      $result = $pa->parseTechSupportFile($att['filepath']);
+      if (!empty($result['isTechSupport'])) {
+        $att['techsupport'] = $result;
+        return 1;
+      }
+    }
+  }
+  return 0;
+}
+
+/**
+ *
+ * @param object $s
+ *
+ * @return number
+ */
+function imap_hook_validateTechSupportEmail(&$s) {
+  if ($s->parts) {
+    return 1;
+  }
+  // no parts
+  return -1;
+}
+
+/**
+ *
+ * @param array $atts
+ */
+function imap_hook_executeTechSupportFiles(&$atts) {
+
+  $ts = array();
+  $xchangeUserAccounts = array();
+  $jiraTicket = array();
+  $has_xchangeusers_txt_attachment = FALSE;
+  foreach ($atts as $index => $att) {
+    // Skip over the header and scan the attachments
+    if (is_numeric($index)) {
+      if (!empty($att['jiraticket'])) {
+        $jiraTicket = $att['jiraticket'];
+      }
+
+      if (!empty($att['xchangeusers'])) {
+        $has_xchangeusers_txt_attachment = TRUE;
+        $xchangeUserAccounts = $att['xchangeusers'];
+      }
+      elseif (!empty($att['techsupport'])) {
+        $ts[] = $att;
+      }
+    }
+  }
+
+  $isEmailTest = FALSE;
+  $statisticDataArray = array();
+  $statisticDataArray['source'] = 'email';
+  $statisticDataArray['numSpam'] = 0;
+  $statisticDataArray['numUnknownUsers'] = 0;
+  $statisticDataArray['licensingDataSent'] = 0;
+  $statisticDataArray['fromJIRA'] = 0;
+
+  // In case we have multiple TS attached to the email
+  foreach ($ts as $techsupportfile) {
+
+    if (empty($techsupportfile['techsupport'])) {
+      $statisticDataArray['numSpam']++;
+      watchdog('patch advisor', 'No Tech Support file to process for ' . $techsupportfile['filename'], NULL, WATCHDOG_ERROR);
+      continue;
+    }
+    $parsedTechSupport = $techsupportfile['techsupport'];
+    // A valid tech-support was downloaded, do the final processing steps
+    if (count($xchangeUserAccounts) == 0) {
+      // Use the address in the from header
+      $pattern = '/([a-z0-9])(([-a-z0-9._])*([a-z0-9]))*\@([a-z0-9])' .
+        '(([a-z0-9-])*([a-z0-9]))+' . '(\.([a-z0-9])([-a-z0-9_-])?([a-z0-9])+)/i';
+
+      $header = $atts['header'];
+      preg_match($pattern, $header->fromaddress, $matches);
+      $xchangeUserAccounts[] = $matches[0];
+    }
+
+    // Lookup user uids and move the tech-support on this
+    foreach ($xchangeUserAccounts as $userEmail) {
+      // Associate it with an autotechsupport or a jira ticket
+      associateTechSupportFileToSingleUser($userEmail, $techsupportfile, $statisticDataArray, $jiraTicket);
+    }
+    // Stats
+    if (!empty($jiraTicket)) {
+      $statisticDataArray['fromJIRA']++;
+    }
+
+    // forward email to LRS for license tracking
+    // 06-05-2013: Xchange shall only send the email to the LRS when the service license content does not contain: Service usage file has not been generated
+    if ($parsedTechSupport['hasServiceUsageFile']) {
+      $LRSmailUserAccount = variable_get('lrs_mail_user', LRS_MAIL_USER);
+      if ($isEmailTest) {
+        $LRSmailUserAccount = XCHANGESUPPORT_EMAIL;
+      }
+      sendLicencingData($parsedTechSupport['licensing'], $LRSmailUserAccount);
+      $statisticDataArray['licensingDataSent']++;
+    }
+  }
+  if (!$isEmailTest) {
+    broadsoft_statistics_addStat(STAT_PA, $statisticDataArray);
+  }
+  return 1;
+}
+
+function broadworks_online_patch_advisor_form($form, &$form_state) {
+  drupal_add_css(drupal_get_path('module', 'broadworks_patch_advisor') . '/broadworks_patch_advisor.css', 'module');
+  $form = array();
+  $form = array('#attributes' => array('enctype' => 'multipart/form-data'));
+  $form['form_text'] = array(
+    '#type' => 'item',
+    '#title' => t(''),
+    '#markup' => t('This page implements a patch advisory tool for BroadWorks.
+     The tool takes as input the output of the tech-support tool captured on a BroadWorks server. It then compares the list of installed patches for that node type/release and generate a list of missing patches. From that point, an operator can generate a custom patch bundle with all or a subset of the reported missing patches.'),
+  );
+
+  $form['patch_file'] = array(
+    '#type' => 'file',
+    '#title' => t('Upload a tech-support:'),
+    '#size' => 22,
+  );
+
+  $form['patch_submit'] = array(
+    '#type' => 'submit', 
+    '#value' => t('Upload'), 
+  );
+
+  return $form;
+}
+
+function broadworks_online_patch_advisor_form_validate($form, &$form_state) {
+  $file = file_save_upload('patch_file', array(
+    'file_validate_is_image' => array(),
+    'file_validate_extensions' => array('png gif jpg jpeg txt'),
+  ));
+  if ($file) {
+    if ($file = file_move($file, 'public://')) {
+      $form_state['values']['patch_file'] = $file;
+    }
+    else {
+      form_set_error('patch_file', t('Failed to write the uploaded file the site\'s file folder.'));
+    }
+  }
+  else {
+    form_set_error('patch_file', t('No file was uploaded.'));
+  }
+}
+
+function broadworks_online_patch_advisor_form_submit($form, &$form_state) {
+  $file=$form_state['values']['patch_file'];
+  unset($form_state['values']['patch_file']);
+  $file->status = FILE_STATUS_PERMANENT;
+  print_r($file);
+  //die;
+  file_save($file);
+  drupal_set_message(t('The form has been submitted and the image has been saved, filename: @filename.', array('@filename' => $file->filename)));
+}
+
+/**
+ * Implements hook_block_info().
+ */
+function broadworks_patch_advisor_block_info() {
+  $blocks = array();
+  $blocks['patch_advisor'] = array(
+    'info' => t('Online Patch Advisor'),
+  );
+  
+  $blocks['patch_advisor_file_links'] = array(
+    'info' => t('Online Patch Advisor File Links'),
+  );
+  
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function broadworks_patch_advisor_block_view($delta='') {
+  $block = array();
+  
+  switch($delta) {
+    case 'patch_advisor' :
+      $block['content'] = drupal_get_form('broadworks_online_patch_advisor_form');
+      break;
+
+    case 'patch_advisor_file_links' :
+      if($_GET['view'] != '' && isset($_GET['view'])){
+        global $user;
+        $query = "SELECT * FROM broadworks_patch_advisor WHERE uid = :uid ORDER BY timestamp DESC";
+        $result = db_query($query, array(':uid' => $user->uid));
+        $block['content'] = '<h2>Online BroadWorks Patch Advisor</h2><ul class="patch_advisor_file_links_cont">';
+        
+        while($line = $result->fetchAssoc()){
+          $isUploaded = FALSE;
+          if ($line['status'] == ADVISOR_STATUS_UPLOADED || $line['status'] == ADVISOR_STATUS_TICKET_ATTACHED || $line['status'] == ADVISOR_STATUS_EMAIL_UPLOADED) {
+            $isUploaded = TRUE;
+          }
+          if($_GET['view'] != $line['tsid']){
+            $block['content'] .= '<li><a href="' . $splitQueryString[0] . '?view=' . $line['tsid'] . '">'.$line['filename'].'</a></li>';  
+          }
+        
+        }
+        $block['content'] .= '</ul>';
+      }
+      break;  
+  }
+  
+  return $block;
+}
+
+
+/* patch advisor forms */
+function patch_advisor_upload() {
+  global $user;
+  echo handle_doc_upload($user);
+}
+
+function patch_advisor_upload_form($form, $form_state) {
+  $form = array();
+  // File upload form
+  // Using dropzone js
+  drupal_add_js(array('broadworks_patch_advisor' => array('upload_path' => base_path().'broadworks/patch_advisor/upload')), array('type' => 'setting'));
+  $form['attachments'] = array(
+    '#type' => 'container',
+    '#title_display' => 'hidden',
+    '#name' => 'pdropzone',
+    '#theme_wrappers' => array('dropzone_attachment_container'),
+    '#attached' => array(
+      'js' => array(
+        drupal_get_path('module', 'broadworks_patch_advisor').'/js/dropzone.js' => array('type' => 'file'),
+      )
+    ),
+  );
+  $form['#attributes'] = array('class' => array('patch-upload-form'));
+  return $form;
+}
+

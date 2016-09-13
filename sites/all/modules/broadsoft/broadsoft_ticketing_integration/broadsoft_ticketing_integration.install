@@ -1,0 +1,182 @@
+<?php
+
+function broadsoft_ticketing_integration_uninstall() {
+  drupal_uninstall_schema('broadsoft_ticketing_integration');
+}
+
+function broadsoft_ticketing_integration_schema(){
+  $schema['ticketing_options'] = array(
+    'module'=>'broadsoft_ticketing_integration',
+    'description'=>t("Stores information for ticketing options."),
+    'fields'=>array(
+      'oid'=>array(
+        'type' => 'varchar',
+        'length' => 30,
+        'not null' => TRUE,
+        'default' => '',
+        'description'=>t("A unique option id on Xchange."),
+      ),
+      'name'=>array(
+        'type' => 'varchar',
+        'length' => 60,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => t('The option name.'),
+      ),
+      'category'=>array(
+        'type' => 'varchar',
+        'length' => 60,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => t('The option category name.'),
+      ),
+      'tid'=>array(
+        'description'=>t("An Xchange Term reference"),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => FALSE,
+      ),
+      'to_ticketing_group_category'=>array(
+        'description'=>t("Ticketing group category"),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => '0',
+      ),
+    ),
+    'primary key'=>array('oid', 'to_ticketing_group_category'),
+    'unique keys' => array(),
+  );
+
+  // new table
+  $schema['ticketing_options_dependencies']= array(
+    'module'=>'broadsoft_ticketing_integration',
+    'description'=>t("Stores information for ticketing options inter-dependencies."),
+    'fields'=>array(
+      'oid'=>array(
+        'type' => 'varchar',
+        'length' => 30,
+        'not null' => TRUE,
+        'default' => '',
+        'description'=>t("A unique option id on Xchange."),
+      ),
+      'dependant_category'=>array(
+        'type' => 'varchar',
+        'length' => 60,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => t('The dependant category name.'),
+      ),
+      'allowed_oid'=>array(
+        'type' => 'varchar',
+        'length' => 30,
+        'not null' => TRUE,
+        'default' => '',
+        'description'=>t("A unique option id on Xchange."),
+      ),
+      'tod_ticketing_group_category'=>array(
+        'description'=>t("Ticketing group category"),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => '0',
+      ),
+    ),
+    'primary key'=>array('oid', 'allowed_oid', 'tod_ticketing_group_category'),
+    'foreign keys' => array(
+      'option_id' => array(
+        'table' => 'ticketing_options',
+        'columns' => array('oid' => 'oid', 'allowed_oid' => 'oid'),
+       ),
+     ),
+  );
+
+  // new table
+  $schema['ticketing_account_membership'] = array(
+    'module'=>'broadsoft_ticketing_integration',
+    'description'=>t("Stores information for ticketing account membership."),
+    'fields'=>array(
+      'uid'=>array(
+        'description'=>t("An Xchange User reference"),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'aid'=>array(
+        'description' => t('The Account'),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+    ),
+    'primary key'=>array('uid', 'aid'),
+    'foreign keys' => array(
+      'uid' => array(
+        'table' => 'users',
+        'columns' => array('uid' => 'uid'),
+      ),
+      'aid' => array(
+        'table' => 'node',
+        'columns' => array('aid' => 'nid'),
+      ),
+    ),
+  );
+
+  // new table
+  $schema['ticketing_group_membership'] = array(
+    'module'=>'broadsoft_ticketing_integration',
+    'description'=>t("Stores information for ticketing group membership."),
+    'fields'=>array(
+      'uid'=>array(
+        'description'=>t("An Xchange User reference"),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'gid'=>array(
+        'description' => t('The Customer Group'),
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'mode'=>array(
+        'type' => 'varchar',
+        'length' => 10,
+        'not null' => TRUE,
+        'default' => '',
+        'description'=>t("view or edit."),
+      ),
+      'notify'=>array(
+        'type' => 'int',
+        'not null' => TRUE,
+        'size' => 'tiny',
+        'default' => 1,
+        'description'=>t("User will be added to email notification lists for this Group. Possible values: true (1) or false (0)."),
+      ),
+    ),
+    'primary key'=>array('uid', 'gid', 'mode'),
+    'foreign keys' => array(
+      'uid' => array(
+        'table' => 'users',
+        'columns' => array('uid' => 'uid'),
+      ),
+      'gid' => array(
+        'table' => 'node',
+        'columns' => array('gid' => 'nid'),
+      ),
+    ),
+  );
+
+  return $schema;
+}
+
+/**
+ * Add RE-SYNCHRONIZE TICKETING OPTIONS variables.
+ */
+function broadsoft_ticketing_integration_update_7001() {
+  variable_set('ticketing_xchange_API_server', '127.0.0.1/php/xchange');
+  variable_set('broadsoft_site_ID', 'cpbx');
+  variable_set('ticketing_xchange_API_usercheck', 'xchangesupport@broadsoft.com');
+  variable_set('ticketing_xchange_server_1', 'https://xchangeserver3.broadsoft.com/php/xchange');
+  variable_set('ticketing_xchange_server_2', 'https://xchangeserver4.broadsoft.com/php/xchange');
+}

@@ -1,0 +1,1770 @@
+<html>
+
+
+<head profile="http://www.w3.org/1999/xhtml/vocab">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+
+  <link rel="shortcut icon" href="http://cshp.getventive.com/misc/favicon.ico" type="image/vnd.microsoft.icon">
+  <meta name="generator" content="Drupal 7 (http://drupal.org)">
+  <link rel="canonical" href="http://cshp.getventive.com/ticketing">
+  <link rel="shortlink" href="http://cshp.getventive.com/ticketing">
+  <title>Documentation | Xchange v2</title>
+  <script type="text/javascript" src="//code.jquery.com/jquery-1.10.2.min.js"></script>
+  <style type="text/css" media="all">
+    @import url("http://cshp.getventive.com/profiles/commons/modules/contrib/editor/css/components/align.module.css?oagop4");
+    @import url("http://cshp.getventive.com/profiles/commons/modules/contrib/editor/css/components/resize.module.css?oagop4");
+    @import url("http://cshp.getventive.com/profiles/commons/modules/contrib/editor/css/filter/filter.caption.css?oagop4");
+    @import url("http://cshp.getventive.com/profiles/commons/modules/contrib/editor/modules/editor_ckeditor/css/plugins/drupalimagecaption/editor_ckeditor.drupalimagecaption.css?oagop4");
+    @import url("http://cshp.getventive.com/modules/system/system.base.css?oagop4");
+    @import url("http://cshp.getventive.com/modules/system/system.menus.css?oagop4");
+    @import url("http://cshp.getventive.com/modules/system/system.messages.css?oagop4");
+    @import url("http://cshp.getventive.com/modules/system/system.theme.css?oagop4");
+  </style>
+  <style type="text/css" media="all">
+    @import url("http://cshp.getventive.com/profiles/commons/modules/contrib/navbar/css/navbar.menu.css?oagop4");
+    @import url("http://cshp.getventive.com/profiles/commons/modules/contrib/navbar/css/navbar.module.css?oagop4");
+    @import url("http://cshp.getventive.com/profiles/commons/modules/contrib/navbar/css/navbar.theme.css?oagop4");
+    @import url("http://cshp.getventive.com/profiles/commons/modules/contrib/navbar/css/navbar.icons.css?oagop4");
+  </style>
+  <style type="text/css" media="all">
+    @import url("http://cshp.getventive.com/sites/all/modules/contrib/achievements/achievements.css?oagop4");
+    @import url("http://cshp.getventive.com/sites/all/modules/broadsoft/broadsoft_ticketing_integration/../broadsoft_utils/jquery-ui-1.9.2.custom/css/custom-theme/jquery-ui-1.9.2.custom.css?oagop4");
+    @import url("http://cshp.getventive.com/sites/all/modules/broadsoft/broadsoft_ticketing_pagination/broadsoft_ticketing_pagination.css?oagop4");
+    @import url("http://cshp.getventive.com/modules/comment/comment.css?oagop4");
+    @import url("http://cshp.getventive.com/profiles/commons/modules/contrib/date/date_api/date.css?oagop4");
+    @import url("http://cshp.getventive.com/profiles/commons/modules/contrib/date/date_popup/themes/datepicker.1.7.css?oagop4");
+    @import url("http://cshp.getventive.com/modules/field/theme/field.css?oagop4");
+    @import url("http://cshp.getventive.com/modules/node/node.css?oagop4");
+    @import url("http://cshp.getventive.com/modules/poll/poll.css?oagop4");
+    @import url("http://cshp.getventive.com/modules/search/search.css?oagop4");
+    @import url("http://cshp.getventive.com/modules/user/user.css?oagop4");
+    @import url("http://cshp.getventive.com/modules/forum/forum.css?oagop4");
+    @import url("http://cshp.getventive.com/profiles/commons/modules/contrib/views/css/views.css?oagop4");
+    @import url("http://cshp.getventive.com/profiles/commons/modules/commons/commons_media/commons_media.css?oagop4");
+  </style>
+  <style type="text/css" media="all">
+    @import url("http://cshp.getventive.com/profiles/commons/modules/contrib/ctools/css/ctools.css?oagop4");
+    @import url("http://cshp.getventive.com/profiles/commons/modules/contrib/panels/css/panels.css?oagop4");
+    @import url("http://cshp.getventive.com/sites/all/modules/contrib/taxonomy_access/taxonomy_access.css?oagop4");
+    @import url("http://cshp.getventive.com/sites/all/themes/mantis/layouts/broadsoft_twocol/broadsoft_twocol.css?oagop4");
+    @import url("http://cshp.getventive.com/sites/all/themes/mantis/layouts/broadsoft_tabs/broadsoft_tabs.css?oagop4");
+    @import url("http://cshp.getventive.com/sites/all/modules/contrib/search_api_autocomplete/search_api_autocomplete.css?oagop4");
+  </style>
+  <style type="text/css" media="all">
+    @import url("http://cshp.getventive.com/sites/all/themes/mantis/css/font-awesome.min.css?oagop4");
+    @import url("http://cshp.getventive.com/sites/all/themes/mantis/css/bootstrap.min.css?oagop4");
+    @import url("http://cshp.getventive.com/sites/all/themes/mantis/css/global.css?oagop4");
+    @import url("http://cshp.getventive.com/sites/all/themes/mantis/css/global_v2.css?oagop4");
+    @import url("http://cshp.getventive.com/sites/all/themes/mantis/css/modal.css?oagop4");
+    @import url("http://cshp.getventive.com/sites/all/themes/mantis/css/elements.css?oagop4");
+    @import url("http://cshp.getventive.com/sites/all/themes/mantis/css/ticket.css?oagop4");
+    @import url("http://cshp.getventive.com/sites/all/themes/mantis/css/newticket.css?oagop4");
+    @import url("http://cshp.getventive.com/sites/all/themes/mantis/css/mantis.css?oagop4");
+  </style>
+  <script type="text/javascript" src="//code.jquery.com/jquery-1.10.2.min.js"></script>
+  <script>
+    <!--//--><![CDATA[//><!--
+    window.jQuery || document.write("<script src='/profiles/commons/modules/contrib/jquery_update/replace/jquery/1.10/jquery.min.js'>\x3C/script>")
+      //--><!]]>
+  </script>
+  <script src="http://cshp.getventive.com/misc/jquery.once.js?v=1.2"></script>
+  <script src="http://cshp.getventive.com/misc/drupal.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/libraries/modernizr/modernizr.js?v=2.7.1"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/libraries/underscore/underscore-min.js?v=1.5.2"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/libraries/backbone/backbone-min.js?v=1.1.0"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/jquery_update/replace/ui/external/jquery.cookie.js?v=67fb34f6a866c40d0570"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/jquery_update/replace/misc/jquery.form.min.js?v=2.69"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/navbar/js/matchmedia.js?v=7.43"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/navbar/js/debounce.js?v=7.43"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/navbar/js/announce.js?v=7.43"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/navbar/js/displace.js?v=7.43"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/navbar/js/navbar.menu.js?v=7.43"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/navbar/js/escape-admin.js?v=7.43"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/navbar/js/navbar.js?v=7.43"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/navbar/js/jquery/ducktape.events.js?v=7.43"></script>
+  <script src="http://cshp.getventive.com/misc/form.js?v=7.43"></script>
+  <script src="http://cshp.getventive.com/misc/states.js?v=7.43"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/dialog/misc/ajax.js?v=7.43"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/jquery_update/js/jquery_update.js?v=0.0.1"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/navbar/js/navbar-tableheader.js?v=7.43"></script>
+  <script src="http://cshp.getventive.com/sites/all/modules/broadsoft/broadsoft_ticketing_integration/../broadsoft_utils/jquery-ui-1.9.2.custom/js/jquery-ui-1.9.2.custom.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/sites/all/modules/broadsoft/broadsoft_ticketing_integration/dynamic_ticketing.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/sites/all/modules/broadsoft/broadsoft_ticketing_pagination/javascript/throbbe.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/libraries/timeago/jquery.timeago.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/timeago/timeago.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/devel/devel_krumo_path.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/custom_search/js/custom_search.js?oagop4"></script>
+
+  <script   src="https://code.jquery.com/jquery-3.1.0.js"   integrity="sha256-slogkvB1K3VOkzAI8QITxV3VzpOnkeNVsKvtkYLMjfk="   crossorigin="anonymous"></script>
+
+  <script src="./scrollNav.js/jquery.scrollNav.min.js">
+  jQuery(function(){
+    jQuery('.scrolly').scrollNav();
+  })
+  </script>
+  <script>
+    <!--//--><![CDATA[//><!--
+
+
+
+
+
+
+
+jQuery(function() {
+  jQuery('nav').scrollspy({ target: '.scrolly' })
+});
+
+
+
+$(function() {
+    //caches a jQuery object containing the header element
+    var header = $(".fixed-row");
+    $(window).scroll(function() {
+        var scroll = $(window).scrollTop();
+
+        if (scroll >= 180) {
+            jQuery(".fixed-row").addClass("pullheader");
+        } else {
+            jQuery(".fixed-row").removeClass("pullheader");
+        }
+    });
+});
+
+$(function () {
+  $('ul.liststyle-doc > li').click(function(e) {
+     $(this).closest('li').find('ul').slideToggle(200).toggleClass(.activegreen);
+
+    e.stopPropagation();
+  });
+
+
+});
+
+    //--><!]]>
+  </script>
+
+
+  <script src="http://cshp.getventive.com/misc/autocomplete.js?v=7.43"></script>
+  <script src="http://cshp.getventive.com/misc/progress.js?v=7.43"></script>
+  <script src="http://cshp.getventive.com/sites/all/modules/contrib/search_api_autocomplete/search_api_autocomplete.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/sites/all/modules/broadsoft/broadsoft_ticketing/js/dropzone.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/sites/all/modules/broadsoft/broadsoft_ticketing/js/broadsoft_ticketing.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/views/js/base.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/views/js/ajax_view.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/profiles/commons/modules/contrib/views_load_more/views_load_more.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/sites/all/modules/broadsoft/broadsoft_files_search/broadsoft_files_search.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/sites/all/themes/mantis/js/jquery.ui.touch-punch.min.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/sites/all/themes/mantis/js/bootstrap.min.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/sites/all/themes/mantis/js/global.js?oagop4"></script>
+  <script src="http://cshp.getventive.com/sites/all/themes/mantis/js/jquery-ui-1.9.2.custom.min.js?oagop4"></script>
+
+  <script>
+    <!--//--><![CDATA[//><!--
+    jQuery.extend(Drupal.settings, {
+      "basePath": "\/",
+      "pathPrefix": "",
+      "ajaxPageState": {
+        "theme": "mantis",
+        "theme_token": "yX85YnbgFv5uLfudkzRaWn8f9_mVmJ9b1HwAqR8gNg4",
+        "jquery_version": "1.10",
+        "js": {
+          "0": 1,
+          "\/\/code.jquery.com\/jquery-1.10.2.min.js": 1,
+          "1": 1,
+          "misc\/jquery.once.js": 1,
+          "misc\/drupal.js": 1,
+          "profiles\/commons\/libraries\/modernizr\/modernizr.js": 1,
+          "profiles\/commons\/libraries\/underscore\/underscore-min.js": 1,
+          "profiles\/commons\/libraries\/backbone\/backbone-min.js": 1,
+          "profiles\/commons\/modules\/contrib\/jquery_update\/replace\/ui\/external\/jquery.cookie.js": 1,
+          "profiles\/commons\/modules\/contrib\/jquery_update\/replace\/misc\/jquery.form.min.js": 1,
+          "profiles\/commons\/modules\/contrib\/navbar\/js\/matchmedia.js": 1,
+          "profiles\/commons\/modules\/contrib\/navbar\/js\/debounce.js": 1,
+          "profiles\/commons\/modules\/contrib\/navbar\/js\/announce.js": 1,
+          "profiles\/commons\/modules\/contrib\/navbar\/js\/displace.js": 1,
+          "profiles\/commons\/modules\/contrib\/navbar\/js\/navbar.menu.js": 1,
+          "profiles\/commons\/modules\/contrib\/navbar\/js\/escape-admin.js": 1,
+          "profiles\/commons\/modules\/contrib\/navbar\/js\/navbar.js": 1,
+          "profiles\/commons\/modules\/contrib\/navbar\/js\/jquery\/ducktape.events.js": 1,
+          "misc\/form.js": 1,
+          "misc\/states.js": 1,
+          "profiles\/commons\/modules\/contrib\/dialog\/misc\/ajax.js": 1,
+          "profiles\/commons\/modules\/contrib\/jquery_update\/js\/jquery_update.js": 1,
+          "profiles\/commons\/modules\/contrib\/navbar\/js\/navbar-tableheader.js": 1,
+          "sites\/all\/modules\/broadsoft\/broadsoft_ticketing_integration\/..\/broadsoft_utils\/jquery-ui-1.9.2.custom\/js\/jquery-ui-1.9.2.custom.js": 1,
+          "sites\/all\/modules\/broadsoft\/broadsoft_ticketing_integration\/dynamic_ticketing.js": 1,
+          "sites\/all\/modules\/broadsoft\/broadsoft_ticketing_pagination\/javascript\/throbbe.js": 1,
+          "profiles\/commons\/libraries\/timeago\/jquery.timeago.js": 1,
+          "profiles\/commons\/modules\/contrib\/timeago\/timeago.js": 1,
+          "profiles\/commons\/modules\/contrib\/devel\/devel_krumo_path.js": 1,
+          "profiles\/commons\/modules\/contrib\/custom_search\/js\/custom_search.js": 1,
+          "2": 1,
+          "misc\/autocomplete.js": 1,
+          "misc\/progress.js": 1,
+          "sites\/all\/modules\/contrib\/search_api_autocomplete\/search_api_autocomplete.js": 1,
+          "sites\/all\/modules\/broadsoft\/broadsoft_ticketing\/js\/dropzone.js": 1,
+          "sites\/all\/modules\/broadsoft\/broadsoft_ticketing\/js\/broadsoft_ticketing.js": 1,
+          "profiles\/commons\/modules\/contrib\/views\/js\/base.js": 1,
+          "profiles\/commons\/modules\/contrib\/views\/js\/ajax_view.js": 1,
+          "profiles\/commons\/modules\/contrib\/views_load_more\/views_load_more.js": 1,
+          "sites\/all\/modules\/broadsoft\/broadsoft_files_search\/broadsoft_files_search.js": 1,
+          "sites\/all\/themes\/mantis\/js\/jquery.ui.touch-punch.min.js": 1,
+          "sites\/all\/themes\/mantis\/js\/bootstrap.min.js": 1,
+          "sites\/all\/themes\/mantis\/js\/global.js": 1,
+          "sites\/all\/themes\/mantis\/js\/jquery-ui-1.9.2.custom.min.js": 1
+        },
+        "css": {
+          "profiles\/commons\/modules\/contrib\/editor\/css\/components\/align.module.css": 1,
+          "profiles\/commons\/modules\/contrib\/editor\/css\/components\/resize.module.css": 1,
+          "profiles\/commons\/modules\/contrib\/editor\/css\/filter\/filter.caption.css": 1,
+          "profiles\/commons\/modules\/contrib\/editor\/modules\/editor_ckeditor\/css\/plugins\/drupalimagecaption\/editor_ckeditor.drupalimagecaption.css": 1,
+          "modules\/system\/system.base.css": 1,
+          "modules\/system\/system.menus.css": 1,
+          "modules\/system\/system.messages.css": 1,
+          "modules\/system\/system.theme.css": 1,
+          "profiles\/commons\/modules\/contrib\/navbar\/css\/navbar.menu.css": 1,
+          "profiles\/commons\/modules\/contrib\/navbar\/css\/navbar.module.css": 1,
+          "profiles\/commons\/modules\/contrib\/navbar\/css\/navbar.theme.css": 1,
+          "profiles\/commons\/modules\/contrib\/navbar\/css\/navbar.icons.css": 1,
+          "sites\/all\/modules\/contrib\/achievements\/achievements.css": 1,
+          "sites\/all\/modules\/broadsoft\/broadsoft_ticketing_integration\/..\/broadsoft_utils\/jquery-ui-1.9.2.custom\/css\/custom-theme\/jquery-ui-1.9.2.custom.css": 1,
+          "sites\/all\/modules\/broadsoft\/broadsoft_ticketing_pagination\/broadsoft_ticketing_pagination.css": 1,
+          "modules\/comment\/comment.css": 1,
+          "profiles\/commons\/modules\/contrib\/date\/date_api\/date.css": 1,
+          "profiles\/commons\/modules\/contrib\/date\/date_popup\/themes\/datepicker.1.7.css": 1,
+          "modules\/field\/theme\/field.css": 1,
+          "modules\/node\/node.css": 1,
+          "modules\/poll\/poll.css": 1,
+          "modules\/search\/search.css": 1,
+          "modules\/user\/user.css": 1,
+          "modules\/forum\/forum.css": 1,
+          "profiles\/commons\/modules\/contrib\/views\/css\/views.css": 1,
+          "profiles\/commons\/modules\/commons\/commons_media\/commons_media.css": 1,
+          "profiles\/commons\/modules\/contrib\/ctools\/css\/ctools.css": 1,
+          "profiles\/commons\/modules\/contrib\/panels\/css\/panels.css": 1,
+          "sites\/all\/modules\/contrib\/taxonomy_access\/taxonomy_access.css": 1,
+          "sites\/all\/themes\/mantis\/layouts\/broadsoft_twocol\/broadsoft_twocol.css": 1,
+          "sites\/all\/themes\/mantis\/layouts\/broadsoft_tabs\/broadsoft_tabs.css": 1,
+          "sites\/all\/modules\/contrib\/search_api_autocomplete\/search_api_autocomplete.css": 1,
+          "sites\/all\/themes\/mantis\/css\/font-awesome.min.css": 1,
+          "sites\/all\/themes\/mantis\/css\/bootstrap.min.css": 1,
+          "sites\/all\/themes\/mantis\/css\/global.css": 1,
+          "sites\/all\/themes\/mantis\/css\/global_v2.css": 1,
+          "sites\/all\/themes\/mantis\/css\/modal.css": 1,
+          "sites\/all\/themes\/mantis\/css\/elements.css": 1,
+          "sites\/all\/themes\/mantis\/css\/ticket.css": 1,
+          "sites\/all\/themes\/mantis\/css\/newticket.css": 1,
+          "sites\/all\/themes\/mantis\/css\/mantis.css": 1
+        }
+      },
+      "timeago": {
+        "refreshMillis": 60000,
+        "allowFuture": true,
+        "localeTitle": false,
+        "cutoff": 0,
+        "strings": {
+          "prefixAgo": null,
+          "prefixFromNow": null,
+          "suffixAgo": "ago",
+          "suffixFromNow": "from now",
+          "seconds": "less than a minute",
+          "minute": "about a minute",
+          "minutes": "%d minutes",
+          "hour": "about an hour",
+          "hours": "about %d hours",
+          "day": "a day",
+          "days": "%d days",
+          "month": "about a month",
+          "months": "%d months",
+          "year": "about a year",
+          "years": "%d years",
+          "wordSeparator": " "
+        }
+      },
+      "custom_search": {
+        "form_target": "_self",
+        "solr": 1
+      },
+      "ajax": {
+        "edit-critical": {
+          "callback": "ticket_severity_callback",
+          "wrapper": "severityWrapper",
+          "event": "mousedown",
+          "keypress": true,
+          "prevent": "click",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "critical",
+            "_triggering_element_value": ""
+          }
+        },
+        "edit-major": {
+          "callback": "ticket_severity_callback",
+          "wrapper": "severityWrapper",
+          "event": "mousedown",
+          "keypress": true,
+          "prevent": "click",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "major",
+            "_triggering_element_value": ""
+          }
+        },
+        "edit-minor": {
+          "callback": "ticket_severity_callback",
+          "wrapper": "severityWrapper",
+          "event": "mousedown",
+          "keypress": true,
+          "prevent": "click",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "minor",
+            "_triggering_element_value": ""
+          }
+        },
+        "edit-informational": {
+          "callback": "ticket_severity_callback",
+          "wrapper": "severityWrapper",
+          "event": "mousedown",
+          "keypress": true,
+          "prevent": "click",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "informational",
+            "_triggering_element_value": ""
+          }
+        },
+        "edit-urgent": {
+          "callback": "ticket_priority_callback",
+          "wrapper": "priorityWrapper",
+          "event": "mousedown",
+          "keypress": true,
+          "prevent": "click",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "urgent",
+            "_triggering_element_value": ""
+          }
+        },
+        "edit-high": {
+          "callback": "ticket_priority_callback",
+          "wrapper": "priorityWrapper",
+          "event": "mousedown",
+          "keypress": true,
+          "prevent": "click",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "high",
+            "_triggering_element_value": ""
+          }
+        },
+        "edit-normal": {
+          "callback": "ticket_priority_callback",
+          "wrapper": "priorityWrapper",
+          "event": "mousedown",
+          "keypress": true,
+          "prevent": "click",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "normal",
+            "_triggering_element_value": ""
+          }
+        },
+        "edit-low": {
+          "callback": "ticket_priority_callback",
+          "wrapper": "priorityWrapper",
+          "event": "mousedown",
+          "keypress": true,
+          "prevent": "click",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "low",
+            "_triggering_element_value": ""
+          }
+        },
+        "edit-cg": {
+          "callback": "customer_group_callback",
+          "wrapper": "in-country",
+          "event": "change",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "cg"
+          }
+        },
+        "edit-product-information-product-product-select": {
+          "callback": "main_product_select_callback",
+          "wrapper": "product-solution",
+          "event": "change",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "product_information[product][product_select]"
+          }
+        },
+        "edit-product-information-product-solution": {
+          "callback": "product_solution_select_callback",
+          "event": "change",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "product_information[product][solution]"
+          }
+        },
+        "edit-product-information-product-component-select": {
+          "callback": "component_select_callback",
+          "wrapper": "product-version",
+          "event": "change",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "product_information[product][component_select]"
+          }
+        },
+        "edit-product-information-product-version": {
+          "callback": "product_version_select_callback",
+          "wrapper": "platform",
+          "event": "change",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "product_information[product][version]"
+          }
+        },
+        "edit-submit": {
+          "callback": "new_ticket_callback",
+          "wrapper": "new-ticket",
+          "event": "mousedown",
+          "keypress": true,
+          "prevent": "click",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "op",
+            "_triggering_element_value": ""
+          }
+        },
+        "edit-submit--2": {
+          "callback": "ticket_search_results_callback",
+          "wrapper": "ticket-search-results",
+          "event": "mousedown",
+          "keypress": true,
+          "prevent": "click",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "op",
+            "_triggering_element_value": ""
+          }
+        },
+        "edit-saved-solutions-solutions-1": {
+          "callback": "product_information_form_callback",
+          "wrapper": "solution-display",
+          "event": "mousedown",
+          "keypress": true,
+          "prevent": "click",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": 1,
+            "_triggering_element_value": ""
+          }
+        },
+        "edit-saved-solutions-solutions-1-remove": {
+          "callback": "product_information_form_callback",
+          "event": "mousedown",
+          "keypress": true,
+          "prevent": "click",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "rem-1",
+            "_triggering_element_value": ""
+          }
+        },
+        "edit-product-information-info-product-product-select": {
+          "callback": "info_main_product_select_callback",
+          "wrapper": "product-solution",
+          "event": "change",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "product_information[info_product][product_select]"
+          }
+        },
+        "edit-product-information-info-product-solution": {
+          "callback": "info_product_solution_select_callback",
+          "event": "change",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "product_information[info_product][solution]"
+          }
+        },
+        "edit-product-information-info-product-component-select": {
+          "callback": "info_component_select_callback",
+          "wrapper": "product-version",
+          "event": "change",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "product_information[info_product][component_select]"
+          }
+        },
+        "edit-submit--5": {
+          "callback": "product_information_form_callback",
+          "event": "mousedown",
+          "keypress": true,
+          "prevent": "click",
+          "url": "\/system\/ajax",
+          "submit": {
+            "_triggering_element_name": "main-form",
+            "_triggering_element_value": ""
+          }
+        }
+      },
+      "urlIsAjaxTrusted": {
+        "\/system\/ajax": true,
+        "\/ticketing": true,
+        "\/search\/search_facetapi": true
+      },
+      "states": {
+        "#edit-product-information-product-component-select": {
+          "enabled": {
+            ":input[name=\u0022product_information[product][version]\u0022]": {
+              "!value": ""
+            }
+          }
+        },
+        "#edit-product-information-product-version": {
+          "visible": {
+            ":input[name=\u0022product_information[product][product_select]\u0022]": {
+              "!value": ""
+            }
+          },
+          "enabled": {
+            ":input[name=\u0022product_information[product][solution]\u0022]": {
+              "!value": ""
+            }
+          }
+        },
+        "#edit-product-information-component-system": {
+          "visible": {
+            ":input[name=\u0022product_information[component][component_select]\u0022]": {
+              "!value": 999999
+            }
+          }
+        },
+        "#edit-product-information-component-platform": {
+          "visible": {
+            ":input[name=\u0022product_information[component][component_select]\u0022]": {
+              "!value": 999999
+            }
+          },
+          "enabled": {
+            ":input[name=\u0022product_information[component][system]\u0022]": {
+              "!value": ""
+            }
+          }
+        }
+      },
+      "views": {
+        "ajax_path": "\/views\/ajax",
+        "ajaxViews": {
+          "views_dom_id:8eb38aa9e5516486bce7e9bbaf955164": {
+            "view_name": "ticketing_dashboard",
+            "view_display_id": "action_required",
+            "view_args": "",
+            "view_path": "ticketing",
+            "view_base_path": null,
+            "view_dom_id": "8eb38aa9e5516486bce7e9bbaf955164",
+            "pager_element": 0
+          },
+          "views_dom_id:372426364b0c7b802cf199fbca4a7dc9": {
+            "view_name": "ticketing_dashboard",
+            "view_display_id": "open_new",
+            "view_args": "",
+            "view_path": "ticketing",
+            "view_base_path": null,
+            "view_dom_id": "372426364b0c7b802cf199fbca4a7dc9",
+            "pager_element": 0
+          },
+          "views_dom_id:7c27ecd05109eed143c19304dd16338d": {
+            "view_name": "ticketing_dashboard",
+            "view_display_id": "closed",
+            "view_args": "",
+            "view_path": "ticketing",
+            "view_base_path": null,
+            "view_dom_id": "7c27ecd05109eed143c19304dd16338d",
+            "pager_element": 0
+          },
+          "views_dom_id:2f67d22ee15cf2cdc061126b6ad6c7f8": {
+            "view_name": "ticketing_dashboard",
+            "view_display_id": "my_tickets",
+            "view_args": "",
+            "view_path": "ticketing",
+            "view_base_path": null,
+            "view_dom_id": "2f67d22ee15cf2cdc061126b6ad6c7f8",
+            "pager_element": 0
+          }
+        }
+      },
+      "currentPath": "ticketing",
+      "currentPathIsAdmin": false,
+      "navbar": {
+        "breakpoints": {
+          "narrow": "only screen and (min-width: 16.5em)",
+          "standard": "only screen and (min-width: 38.125em)",
+          "wide": "only screen and (min-width: 50em)"
+        }
+      }
+    });
+    //--><!]]>
+  </script>
+
+  <script type="text/javascript" src="jquery.jcarousel.min.js"></script>
+
+  <script >
+  $( document ).ready(function() {
+  (function($) {
+      $(function() {
+          /*
+          Carousel initialization
+          */
+          $('.jcarousel')
+              .jcarousel({
+                  // Options go here
+              });
+
+          /*
+           Prev control initialization
+           */
+          $('.jcarousel-control-prev')
+              .on('jcarouselcontrol:active', function() {
+                  $(this).removeClass('inactive');
+              })
+              .on('jcarouselcontrol:inactive', function() {
+                  $(this).addClass('inactive');
+              })
+              .jcarouselControl({
+                  // Options go here
+                  target: '-=1'
+              });
+
+          /*
+           Next control initialization
+           */
+          $('.jcarousel-control-next')
+              .on('jcarouselcontrol:active', function() {
+                  $(this).removeClass('inactive');
+              })
+              .on('jcarouselcontrol:inactive', function() {
+                  $(this).addClass('inactive');
+              })
+              .jcarouselControl({
+                  // Options go here
+                  target: '+=1'
+              });
+
+          /*
+           Pagination initialization
+           */
+          $('.jcarousel-pagination')
+              .on('jcarouselpagination:active', 'a', function() {
+                  $(this).addClass('active');
+              })
+              .on('jcarouselpagination:inactive', 'a', function() {
+                  $(this).removeClass('active');
+              })
+              .jcarouselPagination({
+                  // Options go here
+              });
+      });
+      });
+  })(jQuery);
+
+  </script>
+  <style>
+body.layout-2 .navbar-inverse{
+  float: left;
+width: 100%;
+border-radius: 0px;
+margin-bottom: 0px;
+}
+
+  .support-sol{
+    width: 26%;
+    text-align: left;
+  }
+
+  .support-sol .caret{
+    float: right;
+    margin-top: 6px;
+  }
+
+  .support-sol button{
+    border: 1px solid #ddd;
+    color: #3e3e3e;
+    text-align: left;
+    font-weight: 700;
+    font-size: 12px;
+  }
+
+
+.single-docu{
+  position: relative;
+  width: 100%;
+  height: auto;
+  padding-bottom: 5px;
+  overflow: hidden;
+  float: left;
+}
+
+
+.single-docu .col-md-9{
+  height: auto;
+  float: left;
+  position: relative;
+}
+
+
+  ul.liststyle-doc{
+    margin: 0px;
+    padding: 0px;
+        list-style: none;
+  }
+
+  ul.liststyle-doc li{
+    width: 100%;
+    float: left;
+  }
+
+  ul.liststyle-doc li a{
+    padding: 18px;
+    width: 100%;
+    float: left;
+    padding-left: 4em;
+    position:relative;
+    color:#282f39;
+  }
+
+  ul.liststyle-doc li a:hover{
+    text-decoration: none;
+  }
+
+  ul.liststyle-doc li a:before{
+    position:absolute;
+    content: "\f054";
+    font: normal normal normal 14px/1 FontAwesome;
+    left: 2em;
+    top: 20px;
+  }
+
+
+ul.liststyle-doc li ul li a:before{
+  display: none;
+}
+  ul.liststyle-doc li.active a{
+    border-right:4px solid #76c430;
+    color: #76c430;
+    font-weight: 700;
+    padding-left: 2em;
+  }
+
+  ul.liststyle-doc li.active a:before{
+    content:"";
+  }
+
+
+ul.liststyle-doc li ul { display: none;
+  list-style:none;
+  transition: 0.2s 1s;
+  margin-top: -5px;
+ }
+
+ul.liststyle-doc li > ul {
+  position: relative;
+  float: left;
+  width: 100%;
+  transition-delay: 0s;
+}
+
+ul.liststyle-doc li li a:hover { background: #ddd; }
+
+ul.liststyle-doc li ul li { border-top: 0; }
+ul.liststyle-doc li ul li a{
+  font-size: 12px;
+}
+
+ul.liststyle-doc:before, ul.liststyle-doc:after {
+  content: " "; /* 1 */
+  display: table; /* 2 */
+}
+
+ul.liststyle-doc:after { clear: both; }
+
+.dashboard-breadcrumbs{
+  float: left;
+  background: #fff;
+position: relative;
+z-index: 999;
+padding-top: 18px;
+}
+
+
+nav .navbar{
+margin-bottom: 0px;
+}
+
+.current-sub-nav{
+          background: #fff;
+          float: left;
+position: relative;
+top:0px;
+}
+.single-docu:before{
+  content: "";
+  background: #f3f3f3;
+  width: 25%;
+  left:0px;
+  position:absolute;
+  height:100%;
+}
+.version-row{
+  padding: 3em;
+border-bottom: 1px solid #ddd;
+float: left;
+width: 103%;
+}
+.platfom-sol{
+  border: 1px solid #ddd;
+padding: 10px 2em;
+border-radius: 3px;
+width: AUTO;
+FLOAT: LEFT;
+}
+
+.platfom-sol i{
+  padding: 0px 12px;
+COLOR: #7fcc50;
+FONT-SIZE: 11PX;
+}
+
+.version-drop button{
+  border: 1px solid #ddd;
+padding: 10px 2em;
+color: #333;
+float: right;
+width: auto;
+}
+
+.version-drop .dropdown{
+  position: relative;
+  float: right;
+}
+
+.content-row .full-content{
+    padding: 3em;
+}
+.content-row .full-content h1{
+  font-size: 20px;
+    font-weight: 700;
+    color: #000;
+}
+
+.content-row .full-content h2{
+  font-size: 20px;
+    text-transform: uppercase;
+    color: #7fcc50;
+    font-weight: 800;
+    padding-left: 16px;
+    position: relative;
+    padding-top: 50px;
+    float: left;
+    width: 100%;
+    margin-top: -40px;
+}
+
+.content-row .full-content h2:before{
+  content:"";
+  position: absolute;
+  border-left: 5px solid #7fcc50;
+  left: 0px;
+  height: 22px;
+
+}
+
+.content-row{
+  border-bottom: 1px solid #ddd;
+  float: left;
+  width: 100%;
+  height: auto;
+}
+
+.private-row{
+  padding: 9px 3em 17px;
+  width: 100%;
+  float: left;
+}
+
+.private-row h3{
+      color: #d04a4a;
+      font-size: 18px;
+}
+
+.private-row button{
+  background: #7fcc50;
+    padding: 12px;
+    margin-top: 19px;
+}
+
+.share-side {
+  text-align: center;
+  width: 100%;
+  float: left;
+}
+
+.share-side button{
+  background: none;
+  color: #f1952f;
+  border: 2px solid #f1952f;
+  margin: 13px auto;
+  font-size: 12px;
+  float: none;
+  width: 100%;
+}
+
+.fixed-row{
+  position: fixed;
+  width: 25%;
+  height: 100%;
+  overflow-y: scroll;
+  -webkit-transition-property: -webkit-transform, margin-top;
+  -webkit-transition-duration: 0.1s;
+  -webkit-transition-timing-function: ease-in;
+  -webkit-transform: translate(10px 0px);
+}
+
+.pullheader{
+  margin-top: -221px;
+  -webkit-transition-property: -webkit-transform, margin-top;
+  -webkit-transition-duration: 0.3s;
+  -webkit-transition-timing-function: ease-in;
+  -webkit-transform: translate(10px 0px);
+}
+
+.single-docu .container-fluid{
+  float: left;
+  width: 100%;
+  position: relative;
+height: 100%;
+}
+
+.description button{
+  background: #139dba;
+  color: #fff;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.description h3{
+  font-size: 16px;
+margin-top: 4px;
+font-weight: 800;
+margin-bottom: 6px;
+}
+
+.description p{
+  font-size: 12px;
+}
+
+
+/*
+Carousel
+*/
+.jcarousel {
+    position: relative;
+    overflow: hidden;
+}
+
+
+.jcarousel-wrapper{
+  position: relative;
+}
+.jcarousel ul {
+    width: 20000em;
+    position: relative;
+
+
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+
+.jcarousel li {
+  width: 250px;
+  float: left;
+  margin: 16px;
+  padding-left: 44px;
+  position: relative;
+  font-size: 13px;
+}
+
+.jcarousel-control-prev{
+  position: absolute;
+left: 0px;
+top: 31%;
+font-size: 28px;
+color: #a7a7a7;
+}
+
+
+.jcarousel-control-next{
+  position: absolute;
+right: 0px;
+top: 31%;
+font-size: 28px;
+color: #a7a7a7;
+}
+
+
+.jcarousel li a:hover{
+  text-decoration: none;
+  cursor: pointer;
+}
+
+
+li.faq:before, li.ticketing:before, li.downloads:before, li.seminar:before{
+  background-repeat: no-repeat;
+  background-size: contain;
+  position: absolute;
+  left: 5px;
+  top:5px;
+  content: "";
+  height: 18px;
+  width: 18px;
+  background-repeat: no-repeat;
+}
+
+li.faq:before{
+  background-image: url('icon-faq-small.png');
+}
+
+li.ticketing:before{
+  background-image: url('icon-ticketing-small.png');
+}
+
+li.seminar:before{
+  background-image: url('icon-training-small.png');
+}
+li.downloads:before{
+  background-image: url('icon-meeting-small.png');
+}
+
+.foot-scroll{
+  float: left;
+  width: 100%;
+  position: relative;
+  z-index: 1000;
+  box-shadow: 0px 1px 7px #333;
+  padding-top: 13px;
+  padding-bottom: 14px;
+}
+
+.jcarousel li:after{
+  content: "";
+    right: -16px;
+    height: 33px;
+    width: 1px;
+    top: 0px;
+    border-left: 1px solid #d8d8d8;
+    position: absolute;
+}
+
+
+.helpful-div{
+  float: left;
+  width: 100%;
+  border-top: 1px solid #ddd;
+  border-bottom: 1px solid #ddd;
+  padding: 2em 10px 1.7em;
+  position: relative;
+  margin-bottom: 25px;
+  margin-top: 25px;
+}
+
+
+.helpful-div p{
+  float: left;
+  font-weight: 700;
+  margin-right: 53px;
+}
+
+.helpful-div .btn{
+  float: left;
+  width: 88px;
+  margin: 0px 9px;
+  background: transparent;
+  border: 1px solid #ddd;
+  color: #555;
+  text-align: center;
+  margin-top: -3px;
+  font-size: 18px;
+}
+
+
+.helpful-div .helpful.pressed, .helpful-div .helpful:hover{
+  background: #11ad11;
+color: #fff;
+}
+
+
+.helpful-div .unhelpful.pressed, .helpful-div .unhelpful:hover{
+  background: red;
+color: #fff;
+}
+
+.toppage{
+  text-align: center;
+  font-size: 12px;
+  color: #969494;
+}
+
+.toppage i{
+    width: 100%;
+}
+
+@media only screen and (max-device-width: 780px) {
+  .current-sub-nav .col-md-6{
+      padding: 0px;
+  }
+
+  .current-sub-nav .col-md-1{
+    float: left;
+    width: 16.65%;
+  }
+
+  .support-sol{
+    width: 100%;
+  }
+.single-docu:before{
+  display:none;
+}
+
+  .single-docu .col-md-3, .single-docu .col-md-9{
+    width: 100%;
+    float: left;
+    padding: 0px;
+  }
+
+  .fixed-row {
+    position: relative;
+    width: 100%;
+    height: auto;
+    overflow-y: scroll;
+    margin: 0px;
+    padding:0px;
+    float: left;
+}
+
+.share-side .col-md-4{
+  width: 33.3%;
+  float: left;
+}
+
+.version-row {
+  display: none;
+}
+
+}
+  </style>
+</head>
+
+<body class="html not-front logged-in no-sidebars page-ticketing layout-2" data-spy="scroll" data-target=".liststyle-doc" data-offset="50">
+  <div id="skip-link">
+    <a href="#main-content" class="element-invisible element-focusable">Skip to main content</a>
+  </div>
+  <nav class="navbar navbar-inverse">
+    <div class="container">
+      <div class="row">
+        <div class="navbar-header">
+          <!-- <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+        </button> -->
+          <a class="navbar-brand" href="/" title="Home" rel="home">
+            <img src="http://cshp.getventive.com/sites/all/themes/mantis/logo.png" alt="Home">
+          </a>
+          <ul class="list-inline list-btn header-icons">
+            <li class="notification">
+              <img src="http://cshp.getventive.com/sites/all/themes/mantis/img/icon-notification.png" alt="Notification">
+            </li>
+            <li class="person">
+              <a href="/user/logout">
+                <img data-toggle="tooltip" data-placement="bottom" data-container="body" title="Click to logout" src="http://cshp.getventive.com/sites/all/themes/mantis/img/icon-person.png" alt="Person">
+              </a>
+            </li>
+            <li class="humburger">
+              <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+              </button>
+            </li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <section class="current-sub-nav active-ticketing">
+
+    <div class="col-md-6">
+      <form class="form-ask form-inline" action="/ticketing" method="post" id="broadsoft-files-search-form" accept-charset="UTF-8">
+        <div>
+          <div class="form-item form-type-textfield form-item-search-term">
+            <label class="element-invisible" for="search_term">Enter search term </label>
+            <input id="search-auto" class="form-control ask-query form-text ui-autocomplete-input" placeholder="Ask your question..." type="text" name="search_term" value="" size="60" maxlength="128" autocomplete="off">
+            <span role="status" aria-live="polite" class="ui-helper-hidden-accessible"></span>
+          </div>
+          <input class="element-invisible form-submit" type="submit" id="edit-submit--4" name="op" value="search">
+          <div class="suggestion-list hide">
+            <div class="inner">
+              <h3>We think these resources could help:</h3>
+              <ul class="list-contents"></ul><a class="see-more" href="broadsoft_files_search" title="">See more <i class="fa fa-angle-right" aria-hidden="true"></i></a></div>
+          </div>
+          <input type="hidden" name="form_build_id" value="form-ESbtIwMYLdMUzCwcFQbOp8ZwgZ_04e_g5jGpb0whOYM">
+          <input type="hidden" name="form_token" value="vtIOkwZKMk1qv01PoNLo3QW19pWaxNs4krI2VcuSHnU">
+          <input type="hidden" name="form_id" value="broadsoft_files_search_form">
+        </div>
+      </form>
+    </div>
+    <a href="#section1" class="col-md-1 products-div" data-hover="documentation">
+      <img src="http://cshp.getventive.com/sites/all/themes/mantis/img/icon-products-new.png" alt="documentation">
+    </a>
+    <a href="#section2" class="col-md-1 faq-div" data-hover="KB &amp; FAQs">
+      <img src="http://cshp.getventive.com/sites/all/themes/mantis/img/icon-FAQs-new.png" alt="KB &amp; FAQs">
+    </a>
+    <a href="#section3" class="col-md-1 community-div" data-hover="community">
+      <img src="http://cshp.getventive.com/sites/all/themes/mantis/img/icon-community-forum-new.png" alt="community">
+    </a>
+    <a href="#section4" class="col-md-1 download-div" data-hover="downloads">
+      <img src="http://cshp.getventive.com/sites/all/themes/mantis/img/icon-downloads-new.png" alt="downloads">
+    </a>
+    <a href="#" class="col-md-1 training-div" data-hover="training">
+      <img src="http://cshp.getventive.com/sites/all/themes/mantis/img/icon-trainings-new.png" alt="training">
+    </a>
+    <a href="#" class="col-md-1 ticketing-div" data-hover="ticketing">
+      <img src="http://cshp.getventive.com/sites/all/themes/mantis/img/icon-ticketing-new.png" alt="ticketing">
+    </a>
+
+  </section>
+
+  <section class="dashboard-breadcrumbs">
+    <div class="container-fluid">
+      <div class="col-md-4 bread-links">
+        <a href="/">MY DASHBOARD</a> / <a href="#">DOCUMENTATION</a> / <b>TITLE OF DOC</b></div>
+      <div class="col-md-8 bread-action">
+
+        <form action="/ticketing" method="post" id="product-information-form" accept-charset="UTF-8">
+          <div>
+            <!-- Product Information section -->
+
+
+          </div>
+        </form>
+
+        <form action="/ticketing" method="post" id="supported-solutions" accept-charset="UTF-8">
+          <div>
+            <!-- Single button -->
+              <div class="btn-group pull-right support-sol">
+                <button type="button" class="btn btn-default dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                  My Supported Solutions <span class="caret"></span>
+                </button>
+                <ul class="dropdown-menu">
+                  <li><a href="#">I</a></li>
+                  <li><a href="#">Am</a></li>
+                  <li><a href="#">Not</a></li>
+                  <li><a href="#">Sure</a></li>
+                  <li><a href="#">What</a></li>
+                  <li><a href="#">Goes</a></li>
+                  <li><a href="#">Here</a></li>
+
+                </ul>
+              </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+<section class="hiddensec">
+
+</section>
+  <section class="single-docu">
+
+  <div class="col-md-3">
+    <nav class="row fixed-row">
+
+    <ul class="liststyle-doc" >
+      <li class="active">
+        <a href="#summary">Summary</a>
+      </li>
+      <li>
+        <a href="#section1">Sub Section 1</a>
+      </li>
+      <li>
+        <a href="#section2">Sub Section 2</a>
+        <ul>
+              <li><a href="http://www.google.com">Sub Deep 1</a></li>
+              <li><a href="#">Sub Deep 2</a></li>
+              <li><a href="#">Sub Deep 3</a></li>
+                <li><a href="#">Sub Deep 4</a></li>
+            </ul>
+      </li>
+
+      <li>
+        <a href="#section3">Sub Section 3</a>
+        <ul>
+              <li><a href="#">Sub Deep 1</a></li>
+              <li><a href="#">Sub Deep 2</a></li>
+
+            </ul>
+      </li>
+      <li>
+        <a href="#section4">Sub Section 4</a>
+        <ul>
+
+          <li><a href="#">Sub Deep 3</a></li>
+            <li><a href="#">Sub Deep 4</a></li>
+        </ul>
+      </li>
+    </ul>
+
+    <div class="share-side">
+
+  <div class="col-md-4">
+    <button type="button" class="btn btn-default orange-brdr"><i class="fa fa-download" aria-hidden="true"></i> Pdf</button>
+  </div>
+  <div class="col-md-4">
+    <button type="button" class="btn btn-default orange-brdr"><i class="fa fa-share-alt" aria-hidden="true"></i> Share</button>
+  </div>
+  <div class="col-md-4">
+    <button type="button" class="btn btn-default orange-brdr"><i class="fa fa-heart-o" aria-hidden="true"></i> Favourite</button>
+  </div>
+
+</div>
+
+
+
+  </nav>
+
+  </div>
+  <div class="col-md-9 scrolly">
+    <div class="row version-row">
+      <div class="col-md-6">
+        <!-- <div class="platfom-sol">
+          Platform <i class="fa fa-chevron-right" aria-hidden="true"></i> Solution
+        </div> -->
+        <div class="description">
+          <div class="row">
+            <div class="col-md-3">
+                <button>BroadWorks</button>
+            </div>
+            <div class="col-md-9">
+                <h3>Audio Security Classification for Trunk User Calls</h3>
+                <p>BroadSoft, Inc. / November 4, 2014</p>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <div class="col-md-6">
+        <div class="version-drop">
+          <div class="dropdown">
+            <button class="btn btn-default dropdown-toggle" type="button" id="dropdownMenu1" data-toggle="dropdown" aria-haspopup="true" aria-expanded="true">
+              Versions 23.34.2
+              <span class="caret"></span>
+            </button>
+            <ul class="dropdown-menu" aria-labelledby="dropdownMenu1">
+              <li><a href="#">Version 1</a></li>
+              <li><a href="#">Version 2</a></li>
+              <li><a href="#">Version 3</a></li>
+
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row content-row">
+
+        <div class="full-content">
+
+
+        <h1>Title</h1>
+        <b>Author / Date Published</b>
+
+        <h2 id="summary">Summary</h2>
+
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+
+        <div class="helpful-div">
+          <div class="col-md-10">
+            <p>
+              Helpful?
+            </p>
+            <button class="btn helpful pressed">
+              <i class="fa fa-thumbs-o-up" aria-hidden="true"></i>
+            </button>
+
+            <button class="btn unhelpful">
+              <i class="fa fa-thumbs-o-down" aria-hidden="true"></i>
+            </button>
+          </div>
+
+          <div class="col-md-2 toppage">
+            <a href="#"><i class="fa fa-angle-up" aria-hidden="true"></i>
+            Back to Top
+          </a>
+          </div>
+
+        </div>
+
+
+        <h2 id="section1" name="section1">Section 1</h2>
+
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+
+        <h2 id="section2">Section 2</h2>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+
+
+        <h2 id="section3">Section 3</h2>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+
+
+        <h2 id="section4">Section 4</h2>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+        <p>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet.
+          <br>
+          Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy eirmod tempor invidunt ut labore et dolore magna
+          aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo dolores et ea rebum. Stet clita kasd gubergren, no sea
+          takimata sanctus est Lorem ipsum dolor sit amet. Lorem ipsum dolor sit amet, consetetur sadipscing elitr, sed diam nonumy
+          eirmod tempor invidunt ut labore et dolore magna aliquyam erat, sed diam voluptua. At vero eos et accusam et justo duo
+          <br>
+          et ea rebum. Stet clita kasd gubergren, no sea takimata sanctus est Lorem ipsum dolor sit amet.
+        </p>
+
+
+      </div>
+    </div>
+    <div class="row private-row">
+      <div class="col-md-10">
+        <h3>Private Content</h3>
+        <p>
+          This content is protected and requires a nondisclosure agreement to view. Simply login with an authorized
+account to continue reading.
+        </p>
+      </div>
+      <div class="col-md-2">
+        <button class="btn color-green">Login</button>
+      </div>
+    </div>
+
+  </div>
+
+  </section>
+
+<section class="foot-scroll">
+  <div class="container">
+    <div class="jcarousel-wrapper">
+  <a href="#" class="jcarousel-control-prev"><i class="fa fa-angle-left" aria-hidden="true"></i></a>
+        <!-- Carousel -->
+        <div class="jcarousel">
+            <ul class="content-scroll">
+                <li class="meeting"><a href="#"> How many users can be parked simultaneously?</a></li>
+                <li class="faq"><a href="#">  Video coferencing support feature</a></li>
+                <li class="seminar"><a href="#"> Troubleshooting guide: video conferencing for BroadWork...</a></li>
+                <li class="ticketing"><a href="#"> How can I fix the video conferencing issue on my.. </a></li>
+                <li class="meeting"><a href="#">  How many users can be parked simultaneously?</a></li>
+                <li class="faq"> <a href="#"> Video coferencing support feature</a></li>
+                <li class="seminar"><a href="#"> Troubleshooting guide: video conferencing for BroadWork...</a></li>
+                <li class="ticketing"><a href="#"> How can I fix the video conferencing issue on my.. </a></li>
+                <li class="meeting"><a href="#">  How many users can be parked simultaneously?</a></li>
+                <li class="faq"><a href="#">  Video coferencing support feature</a></li>
+                <li class="seminar"><a href="#"> Troubleshooting guide: video conferencing for BroadWork...</a></li>
+                <li class="ticketing"><a href="#"> How can I fix the video conferencing issue on my.. </a></li>
+                <li class="meeting"><a href="#">  How many users can be parked simultaneously?</a></li>
+                <li class="faq"><a href="#">  Video coferencing support feature</a></li>
+                <li class="seminar"><a href="#"> Troubleshooting guide: video conferencing for BroadWork...</a></li>
+                <li class="ticketing"><a href="#"> How can I fix the video conferencing issue on my.. </a></li>
+            </ul>
+        </div>
+
+        <a href="#" class="jcarousel-control-next"><i class="fa fa-angle-right" aria-hidden="true"></i></a>
+
+    </div>
+  </div>
+</section>
+
+  <footer>
+    <div class="container">
+      <div class="inner">
+        <span class="wrap-btn">
+          <a href="#" title="Give Feedback" class="btn type-none-background color-green pull-left">Give Feedback</a>
+        </span>
+        <div class="wrap-text">
+          <p>© 2016 BroadSoft All Rights Reserved</p>
+          <a href="#" title="" class="small-logo"></a>
+        </div>
+      </div>
+    </div>
+  </footer>
+  <script type="text/javascript">
+    jQuery(window).load(function() {
+      jQuery('#add-ticket').click(function() {
+        jQuery('#contentRating').modal('show');
+      });
+    });
+  </script>
+  <script>
+    <!--//--><![CDATA[//><!--
+    jQuery(document).ready(function($) {
+      $("#action-required-count").text($("#action-required-results").text());
+      $("#open-new-count").text($("#open-new-results").text());
+      $("#closed-count").text($("#closed-results").text());
+      $("#my-tickets-count").text($("#my-tickets-results").text());
+    });
+    //--><!]]>
+  </script>
+
+
+  <div id="drupal-live-announce" class="element-invisible" aria-live="polite" aria-busy="false"></div>
+  <input type="file" multiple="multiple" class="dz-hidden-input" accept=".jpg, .png, .log, .pdf, .doc, .txt" style="visibility: hidden; position: absolute; top: 0px; left: 0px; height: 0px; width: 0px;">
+  <ul class="ui-autocomplete ui-menu ui-widget ui-widget-content ui-corner-all" id="ui-id-1" tabindex="0" style="z-index: 101; display: none;"></ul>
+  <div id="ui-datepicker-div" class="ui-datepicker ui-widget ui-widget-content ui-helper-clearfix ui-corner-all"></div>
+</body>
+</html>

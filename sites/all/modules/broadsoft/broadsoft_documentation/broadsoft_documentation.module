@@ -1,0 +1,328 @@
+<?php
+
+use Aws\Common\Credentials\Credentials;
+use Drupal\amazons3\S3Client;
+
+function broadsoft_documentation_menu() {
+  $items = array();
+  
+  $items["admin/broadsoft_documentation/extract"] = array(
+    'page callback' => 'drupal_get_form',
+    'access arguments' => array('access content'),
+	'page arguments' => array('broadsoft_documentation_extraction_form'),
+    'type' => MENU_CALLBACK,
+  );
+  $items["admin/broadsoft_documentation/batch"] = array(
+    'page callback' => 'drupal_get_form',
+    'access arguments' => array('access content'),
+	'page arguments' => array('broadsoft_documentation_batch_form'),
+    'type' => MENU_CALLBACK,
+  );
+  $items["admin/broadsoft_documentation/current"] = array(
+    'page callback' => 'broadsoft_documentation_current',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+function broadsoft_documentation_current() {
+	$files = scandir(getcwd().'/'.drupal_get_path('module', 'broadsoft_documentation').'/tmp');
+	foreach($files as $file) {
+		print "{$file}<br/>";
+	}
+}
+
+
+function broadsoft_documentation_status($id) {
+	 $status = 'Start';
+	 switch($id) {
+		 case 0: 
+		 $status = 'Stop';
+		 break;
+		 case 1:
+		 $status = 'Start';
+		 break;
+	 }
+	 return $status;
+ }
+
+
+function broadsoft_documentation_batch_form($form, &$form_state) {
+	
+ $state = variable_get('broadsoft_extraction_state', 1);
+
+ $form = array();
+ $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' =>  broadsoft_documentation_status($state),
+  );
+ $form['#submit'][] = 'broadsoft_documentation_batch_form_submit';
+ return $form;
+ 
+}
+
+function broadsoft_documentation_batch_form_submit($form, &$form_state) {
+	
+	$state = variable_get('broadsoft_extraction_state');
+	if($state == 0) {
+		$state = 1;
+	} else {
+		$state = 0;
+	}
+	variable_set('broadsoft_extraction_state', $state);
+	
+	$nids = db_query("SELECT nid FROM {broadsoft_batch} WHERE status = 1 and processed = 0 order by nid desc")
+		->fetchCol();
+		if(empty($nids)) {
+			drupal_set_message(t('Empty queue.'));
+			return;
+	}
+	$s3 = S3Client::factory();
+	
+	$counter = 0;
+	foreach($nids as $nid) {
+		
+		$state = variable_get('broadsoft_extraction_state');
+		if($state == 0) {
+			die('Stopped');
+		}
+		$node = node_load($nid);
+			
+		if($node->field_document['und'][0]['filemime'] == 'application/pdf') {
+			$path  = str_replace( 's3://file-storage-100/', '', $node->field_document['und'][0]['uri']);
+			
+			try {
+		$result = $s3->getObject(array(
+			'Bucket' => 'file-storage-100',
+			'Key'    => $path
+		));	
+				
+		file_put_contents(drupal_get_path('module', 'broadsoft_documentation').'/tmp/'.$node->field_document['und'][0]['filename'], $result['Body']);
+		} catch (S3Exception $e) {
+			echo $e->getMessage() . "\n";
+			var_dump($node->field_document['und'][0]['filename']);
+			variable_set('broadsoft_extraction_state', 1);
+		}
+			
+			$cmd = 'java -jar '.getcwd().'/'.drupal_get_path('module', 'broadsoft_documentation')
+			.'/libs/texthunter.jar -solr no -dpi 150 '.getcwd().'/'. drupal_get_path('module', 'broadsoft_documentation').'/tmp/'.$node->field_document['und'][0]['filename'] .'  2>&1';
+			$file =  shell_exec($cmd);
+			$node->field_json[LANGUAGE_NONE][0]['value'] = $file;
+			field_attach_update('node', $node);
+			node_save($node);
+			
+			unlink(getcwd().'/'. drupal_get_path('module', 'broadsoft_documentation').'/tmp/'.$node->field_document['und'][0]['filename']);
+			$node = null;
+			$file = null;
+			$cmd = null;
+			db_query("UPDATE broadsoft_batch set processed = 1 where nid= :nid", array(':nid' => $nid));
+			$counter++;	
+		}	
+			
+	}
+
+	drupal_set_message(t('Content has been extracted. Processed: ' . $counter . ' files'));
+}
+
+function broadsoft_documentation_extraction_form($form, &$form_state) {
+ $form = array();
+ $form['name']['ext_nid'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Nid'),
+    '#description' => "Please enter nid.",
+    '#size' => 20,
+    '#maxlength' => 20,
+  );
+ $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'Extract',
+  );
+ $form['#submit'][] = 'broadsoft_documentation_extraction_form_submit';
+ return $form;
+}
+
+function broadsoft_documentation_extraction_form_validate($form, &$form_state) {
+	$nid = $form_state['values']['ext_nid'];
+	if (!empty($form_state['values']['ext_nid']) && (int)$nid == 0) {
+		form_set_error('year_of_birth', t('Nid must be a number > 0'));
+	}
+}
+
+
+function broadsoft_documentation_extraction_form_submit($form, &$form_state) {
+	
+	$s3 = S3Client::factory();
+	
+	$nid = $form_state['values']['ext_nid'];
+	
+	if(!empty($form_state['values']['ext_nid']) && (int)$nid != 0)	{
+	 $nids[] = $nid;
+	} else {
+		$node_type = 'documentation';
+		$nids = db_query("SELECT nid FROM {node} WHERE type = :type and status = 1", array(':type' => $node_type))
+		->fetchCol();
+		if(empty($nids)) {
+			drupal_set_message(t('No content of `broadsoft_document` type found.'));
+			return;
+		}
+	}
+	
+	$counter = 0;
+	foreach($nids as $nid) {
+		$node = node_load($nid);
+			
+		if($node->field_document['und'][0]['filemime'] == 'application/pdf') {
+			$path  = str_replace( 's3://file-storage-100/', '', $node->field_document['und'][0]['uri']);
+			
+			try {
+		$result = $s3->getObject(array(
+			'Bucket' => 'file-storage-100',
+			'Key'    => $path
+		));	
+				
+		file_put_contents(drupal_get_path('module', 'broadsoft_documentation').'/tmp/'.$node->field_document['und'][0]['filename'], $result['Body']);
+		} catch (S3Exception $e) {
+			echo $e->getMessage() . "\n";
+			var_dump($node->field_document['und'][0]['filename']);
+		}
+			
+			$cmd = 'java -jar '.getcwd().'/'.drupal_get_path('module', 'broadsoft_documentation')
+			.'/libs/texthunter.jar -solr no -dpi 150 '.getcwd().'/'. drupal_get_path('module', 'broadsoft_documentation').'/tmp/'.$node->field_document['und'][0]['filename'] .'  2>&1';
+			$file =  shell_exec($cmd);
+			$node->field_json[LANGUAGE_NONE][0]['value'] = $file;
+			field_attach_update('node', $node);
+			node_save($node);
+			
+			unlink(getcwd().'/'. drupal_get_path('module', 'broadsoft_documentation').'/tmp/'.$node->field_document['und'][0]['filename']);
+			$counter++;	
+		}	
+			
+	}
+
+	drupal_set_message(t('Content has been extracted. Processed: ' . $counter . ' files'));
+}
+
+function broadsoft_documentation_processTag($tag) {
+	$result = $tag;
+	//link
+	preg_match_all('#\|sSs\|(.*?)\|eEe\|#s', $tag, $matches);
+	if(sizeof($matches) > 0) {    
+		for ($i = 0; $i < count($matches[1]); $i++) {
+			$ext_tag = $matches[1][$i];
+			$curr_tag = $matches[0][$i];
+			$position = strpos($ext_tag, '|mMm|');
+			$json = json_decode(substr($ext_tag, 0, $position));
+			switch($json->tag) {
+			case 'a':
+				$linkText = substr($ext_tag, $position + 5);
+				$external = '';
+				if($json->class == 'external') {
+					 $external  = 'target="_blank"';
+				}
+				$replacement = '<a  href="'.$json->link.'" '.$external.'>'.$linkText.'</a>';   
+			}       
+		$result = preg_replace('/'.preg_quote($curr_tag , '/').'/', $replacement, $result);
+		}    
+	}
+	//Bold
+	$result = preg_replace("#\|bBb\|(.*?)\|\/bBb\|#", "<strong>$1</strong>", $result);
+	$result = preg_replace("#\|bBb\|#", "", $result);
+	$result = preg_replace("#\|/bBb\|#", "", $result);
+	
+	//Italic
+	$result = preg_replace("#\|iIi\|(.*?)\|\/iIi\|#", "<i>$1</i>", $result);
+	$result = preg_replace("#\|iIi\|#", "", $result);
+	$result = preg_replace("#\|/iIi\|#", "", $result);
+	
+	return broadsoft_documentation_replace($result);   
+}
+
+function broadsoft_documentation_replace($value) {
+	$value = str_replace("Œ", "-", $value);
+	$value = str_replace("™", "'", $value);
+	$value = str_replace("¥", "+", $value);
+	return $value;
+}
+
+function  broadsoft_documentation_preprocessTagValue($tag) {
+	switch(strtolower($tag->tag)) {
+		case 'h1' :
+		case 'h2' :
+		case 'h3' :
+		case 'h4' :
+			$value = broadsoft_documentation_addSpanToTitle($tag->value);
+			break;
+		default:
+			$value = $tag->value;
+			break;
+	}
+	return broadsoft_documentation_replace($value);
+}
+
+function  broadsoft_documentation_addSpanToTitle($value) {
+	preg_match('!^\d+(?:\S+)?!', $value, $matches);
+	if($matches[0]) {
+		$value = '<span class="chapter-number">'.$matches[0].'</span>'. str_replace($matches[0], '', $value);
+	} 
+	return trim($value);
+}
+
+function download_documentation_form($form, &$form_state, $furi='') {
+  $form = array();
+  $form['file_key'] = array(
+    '#type' => 'hidden',
+    '#value' => str_replace('s3://file-storage-100/', '', $furi),
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => '',
+    '#prefix' => '<button type="button" class="btn btn-default orange-brdr" id="download-pdf">
+      <i class="fa fa-download" aria-hidden="true"></i> Pdf',
+    '#suffix' => '</button>',
+    '#attributes' => array('class' => array('inside-button')),
+  );
+  return $form;
+}
+
+function download_documentation_form_submit($form, &$form_state) {
+  $file_key = $form_state['values']['file_key'];
+  $url = generate_signed_url('file-storage-100', $file_key);
+  if($url != null) {
+    drupal_goto($url);
+  }
+}
+
+function generate_signed_url($bucket, $file_key, $force_download = TRUE, $expiry = '+60 minutes') {
+  $surl = null;
+  $s3 = Drupal\amazons3\S3Client::factory();
+  try {
+    $params =  array(
+      'Bucket' => $bucket,
+      'Key'    => $file_key,
+      'ResponseContentType' => 'application/octet-stream',
+      'ResponseContentDisposition' => 'attachment; filename="'.basename($file_key).'"',
+    );
+    $cmd = $s3->getCommand('GetObject', $params);
+    $surl = $cmd->createPresignedUrl($expiry);
+  } catch (S3Exception $e) {
+    drupal_set_message(t("An error occurred while retrieving the file! Please try again later."), 'error');
+  }
+  return $surl;
+}
+function showRelatedChapters($searchString){
+    $_GET['title']=$_REQUEST['title']=$searchString;
+    $display_id = 'panel_pane_1';
+    $view_name = 'broadsoft_content_search';
+    $view = views_get_view($view_name);
+    $view->set_display($display_id);
+    $view->is_cacheable = FALSE;
+    $filters = $view->display_handler->get_option('filters');						
+    $filters['search_api_views_fulltext']['value'] = $searchString;
+    $view->display_handler->override_option('filters', $filters);
+    $view->pre_execute();
+    $view->execute();						
+    $search_result=$view->result; 
+    return $search_result;   
+   
+}

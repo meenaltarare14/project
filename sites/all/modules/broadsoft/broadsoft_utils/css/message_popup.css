@@ -1,0 +1,47 @@
+.message_popup_div {
+  background-color:#fae405;
+  word-wrap:normal;
+  white-space:normal;
+  word-spacing: normal !important;
+  text-align: justify;
+  text-justify: inter-word;
+  margin: 10;
+}
+
+.message_popup_div .ui-dialog-titlebar {display:none}
+
+.message_popup_div-close {
+  visibility: hidden;
+}
+
+.ui-dialog-buttonpane {
+  line-height: 150% !important;
+  text-align: center;
+  right: 3%;
+  background-color:#fae405;
+  margin-bottom: 12px;
+}
+
+.ui-dialog {
+  line-height: 150% !important;
+  overflow: visible !important;
+}
+
+.ui-dialog-content {
+  margin-right: 23px;
+  margin-top: 23px;
+  margin-bottom: 23px;
+}
+
+.ui-dialog-overlay {
+  opacity:0.30 !important;
+}
+
+.ui-widget-overlay {
+  opacity:0.30 !important;
+}
+
+.ui-widget-content {
+  border: none;
+  margin-top: 13px;
+}

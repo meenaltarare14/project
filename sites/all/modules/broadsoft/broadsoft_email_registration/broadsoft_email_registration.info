@@ -1,0 +1,12 @@
+name = BroadSoft Email Registration
+description = Allows users to register with an e-mail address as their username.
+files[] = broadsoft_email_registration.module
+core = 7.x
+
+; Information added by Drupal.org packaging script on 2014-04-23
+version = "7.x-0.1"
+core = "7.x"
+package = "Broadsoft"
+project = "Broadsoft"
+datestamp = "1398265775"
+

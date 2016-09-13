@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the ContentTypes for PatchAdvisor feature.
+ */
+
+include_once 'contenttypes_for_patchadvisor.features.inc';

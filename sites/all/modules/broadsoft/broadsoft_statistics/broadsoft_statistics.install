@@ -1,0 +1,55 @@
+<?php
+
+function broadsoft_statistics_uninstall() {
+  drupal_uninstall_schema('broadsoft_statistics');
+  variable_del('broadsoft_statistics_dump_time');
+  variable_del('broadsoft_statistics_dump_dir');
+}
+
+function broadsoft_statistics_schema(){
+  $schema['broadsoft_statistics']= array(
+    'description'=>t("Stores information about custom statistics for BroadSoft."),
+    'fields'=>array(
+      'statid'=>array(
+        'type'=>'serial',
+        'unsigned'=>TRUE,
+        'not null'=>TRUE,
+        'description'=>t("A unique statistic id."),
+      ),
+      'uid'=>array(
+        'type'=>'int',
+        'unsigned'=>TRUE,
+        'not null'=>TRUE,
+        'default'=>0,
+        'description'=>t("A {users}.uid."),
+      ),
+      'timestamp'=>array(
+        'type'=>'int',
+        'unsigned'=>TRUE,
+        'not null'=>TRUE,
+        'default'=>0,
+        'description'=>t("The date on which the statistic was generated."),
+      ),
+      'type'=>array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => t('The stat type.'),
+      ),
+      'value'=>array(
+        'type' => 'text',
+        'size' => 'big',
+        'not null' => TRUE,
+        'description' => t('The stat itself, usually a serialized array.'),
+      ),
+    ),
+    'primary key'=>array('statid'),
+    'unique keys' => array(),
+    'indexes'=>array(
+      'user_uid'=>array('uid')      
+    ),
+  );
+  
+  return $schema;
+}

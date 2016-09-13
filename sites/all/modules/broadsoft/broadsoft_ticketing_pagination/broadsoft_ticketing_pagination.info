@@ -1,0 +1,14 @@
+;$Id:
+name = Broadsoft Ticketing Pagination for D7
+description = Query Tickets using Views D7
+dependencies[] = views
+package = Broadsoft
+
+version = "1.0"
+core = "7.x"
+files[] = handlers/broadsoft_ticketing_pagination_handler_field.inc
+files[] = broadsoft_ticketing_pagination_plugin_query.inc
+dependencies[] = broadsoft_ticketing_integration
+dependencies[] = broadsoft_utils
+scripts[] = javascript/throbbe.js
+stylesheets[all][] = broadsoft_ticketing_pagination.css

@@ -1,0 +1,222 @@
+<?php
+/**
+ * @file
+ * Views Refresh module.
+ */
+
+/**
+ * Implements hook_menu().
+ */
+function views_refresh_menu() {
+  $items = array();
+
+  $items['views/ajax/views-refresh'] = array(
+    'title' => 'Views refresh',
+    'page callback' => 'views_refresh_ajax_handler',
+    'theme callback' => 'ajax_base_page_theme',
+    'delivery callback' => 'ajax_deliver',
+    'access callback' => TRUE,
+    'description' => 'Ajax callback for view refreshing.',
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * Preprocess the primary theme implementation for a view.
+ */
+function views_refresh_preprocess_views_view(&$vars) {
+  if ($vars['view']->use_ajax) {
+    drupal_add_js(drupal_get_path('module', 'views_refresh') . '/views_refresh.js');
+
+    $settings = array(
+      'viewsRefresh' => array(
+        $vars['view']->dom_id => (isset($_GET['page']) ? $_GET['page'] : ''),
+      ),
+    );
+
+    drupal_add_js($settings, 'setting');
+  }
+}
+
+/**
+ * Creates a Drupal Ajax 'viewsRefresh' command.
+ *
+ * @param string $selector
+ *   A jQuery selector string for the root DOM element of the view.
+ * @param int $first_page
+ *   Whether the first page must be loaded instead of the current page.
+ *
+ * @return array
+ *   An array suitable for use with the ajax_render() function.
+ */
+function views_refresh_ajax_command_refresh($selector, $first_page = FALSE) {
+  return array(
+    'command' => 'viewsRefresh',
+    'selector' => $selector,
+    'scroll' => 0,
+    'first' => intval($first_page),
+  );
+}
+
+/**
+ * Creates a Drupal Ajax 'viewsRefresh' command with scrolling to top.
+ *
+ * @param string $selector
+ *   A jQuery selector string for the root DOM element of the view.
+ * @param int $first_page
+ *   Whether the first page must be loaded instead of the current page.
+ *
+ * @return array
+ *   An array suitable for use with the ajax_render() function.
+ */
+function views_refresh_ajax_command_refresh_scroll($selector, $first_page = FALSE) {
+  return array(
+    'command' => 'viewsRefresh',
+    'selector' => $selector,
+    'scroll' => 1,
+    'first' => intval($first_page),
+  );
+}
+
+/**
+ * Menu callback to reload a view via AJAX - modified copy of views_ajax().
+ */
+function views_refresh_ajax_handler() {
+  if (isset($_REQUEST['view_name']) && isset($_REQUEST['view_display_id'])) {
+    $name = $_REQUEST['view_name'];
+    $display_id = $_REQUEST['view_display_id'];
+    $args = isset($_REQUEST['view_args']) && $_REQUEST['view_args'] !== '' ? explode('/', $_REQUEST['view_args']) : array();
+    $path = isset($_REQUEST['view_path']) ? rawurldecode($_REQUEST['view_path']) : NULL;
+    $dom_id = isset($_REQUEST['view_dom_id']) ? preg_replace('/[^a-zA-Z0-9_-]+/', '-', $_REQUEST['view_dom_id']) : NULL;
+    $pager_element = isset($_REQUEST['pager_element']) ? intval($_REQUEST['pager_element']) : NULL;
+    $views_refresh_noscroll = isset($_REQUEST['views_refresh_noscroll']) ? intval($_REQUEST['views_refresh_noscroll']) : 0;
+
+    $commands = array();
+
+    $params_to_remove = array(
+      'view_name',
+      'view_display_id',
+      'view_args',
+      'view_path',
+      'view_dom_id',
+      'pager_element',
+      'view_base_path',
+      'ajax_html_ids',
+      'ajax_page_state',
+      'views_refresh_noscroll',
+    );
+
+    foreach ($params_to_remove as $key) {
+      if (isset($_GET[$key])) {
+        unset($_GET[$key]);
+      }
+      if (isset($_REQUEST[$key])) {
+        unset($_REQUEST[$key]);
+      }
+      if (isset($_POST[$key])) {
+        unset($_POST[$key]);
+      }
+    }
+
+    // Allow to set page via POST only.
+    if (isset($_GET['page'])) {
+      unset($_GET['page']);
+    }
+
+    // Load the view.
+    /** @var view $view */
+    $view = views_get_view($name);
+    if ($view && $view->access($display_id)) {
+      // Fix 'q' for paging.
+      if (!empty($path)) {
+        $_GET['q'] = $path;
+      }
+
+      // Add all $_POST data, because AJAX is always a post and many things,
+      // such as tablesorts, exposed filters and paging assume $_GET.
+      $_GET = $_POST + $_GET;
+
+      // Overwrite the destination.
+      // @see drupal_get_destination()
+      $origin_destination = $path;
+      $query = drupal_http_build_query(drupal_get_query_parameters());
+      if ($query != '') {
+        $origin_destination .= '?' . $query;
+      }
+      $destination = &drupal_static('drupal_get_destination');
+      $destination = array('destination' => $origin_destination);
+
+      // Override the display's pager_element with the one actually used.
+      if (isset($pager_element)) {
+        if (!$views_refresh_noscroll) {
+          $commands[] = array(
+            'command' => 'viewsScrollTop',
+            'selector' => '.view-dom-id-' . $dom_id,
+          );
+        }
+        $view->display[$display_id]->handler->set_option('pager_element', $pager_element);
+      }
+      // Reuse the same DOM id so it matches that in Drupal.settings.
+      $view->dom_id = $dom_id;
+
+      $output = $view->preview($display_id, $args);
+      if ($view->use_pager() && empty($view->result)) {
+        // Shift the current page if the current page result is empty
+        // (e.g. the recent action was last row entity deletion).
+        $output = views_refresh_shift_page_and_render($view, $name, $output, $display_id, $args, $pager_element, $dom_id);
+      }
+      $commands[] = ajax_command_replace('.view-dom-id-' . $dom_id, $output);
+    }
+    drupal_alter('views_ajax_data', $commands, $view);
+    return array('#type' => 'ajax', '#commands' => $commands);
+  }
+
+  return NULL;
+}
+
+/**
+ * Tries to load the previous page of the view if the current page is empty.
+ */
+function views_refresh_shift_page_and_render($view, $name, $output, $display_id, $args, $pager_element, $dom_id) {
+  global $pager_page_array;
+
+  if (empty($pager_page_array)) {
+    $pager_page_array = array();
+  }
+
+  $page_array = isset($_GET['page']) ? explode(',', $_GET['page']) : array();
+
+  /** @var view $view */
+  $pager_id = $view->query->pager->get_pager_id();
+
+  for ($i = 0; $i <= $pager_id || $i < count($pager_page_array); $i++) {
+    $pager_page_array[$i] = empty($page_array[$i]) ? 0 : $page_array[$i];
+  }
+
+  $page = intval($pager_page_array[$pager_id]);
+  if ($page < 0) {
+    $page = 0;
+  }
+
+  // Limit page decrement attempts to avoid DOS attacks.
+  $attempts = 5;
+
+  while (($page > 0) && empty($view->result) && ($attempts > 0)) {
+    $attempts--;
+    $page--;
+    $pager_page_array[$pager_id] = $page;
+    $_GET['page'] = implode(',', pager_load_array($page, $pager_id, $page_array));
+
+    $view = views_get_view($name);
+    $view->init_display();
+    if (isset($pager_element)) {
+      $view->display[$display_id]->handler->set_option('pager_element', $pager_element);
+    }
+    $view->dom_id = $dom_id;;
+    $output = $view->preview($display_id, $args);
+  }
+
+  return $output;
+}

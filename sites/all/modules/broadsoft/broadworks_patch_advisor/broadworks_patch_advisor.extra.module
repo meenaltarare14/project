@@ -1,0 +1,325 @@
+<?php
+
+/**
+ * NOTE: unknown DB tables:
+ * content_field_posted_date
+ * content_field_dependencies
+ *
+ * constant XCHANGESUPPORT_EMAIL is defined at 'broadsoft_utils' module
+ *
+ * function downloadTechSupport() was not found anywhere
+ */
+
+
+define("ADVISOR_STATUS_INIT", "init");
+define("ADVISOR_STATUS_INVALID", "invalid");
+define("ADVISOR_STATUS_UPLOADED", "uploaded");
+define("ADVISOR_STATUS_EMAIL_UPLOADED", "emailed");
+define("ADVISOR_STATUS_TICKET_ATTACHED", "attached");
+
+// Choose from: 
+//    NULL    : NOT in testing mode
+//    'CMD'   : testing from the command-line
+//    'DRUPAL': testing in Drupal env
+//  v v v v v v v v v v v v v v
+$TESTING_MODE = NULL;
+//define("ADVISOR_MAIL_USER", "xchangetest@broadsoft.com"); // this is an available test account
+define("ADVISOR_MAIL_USER", "xchange.pa@broadsoft.com");
+//  ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^
+
+// TODO: check current loaction and address
+define("ADVISOR_ROOT_DIR", "/var/broadworks/xchangeRepos/patchAdvisor");
+define("ADVISOR_MAIL_SERVER_ADDRESS", "{imap.gmail.com:993/ssl/novalidate-cert}INBOX");
+
+define("ADVISOR_MAIL_PASSWORD", "BroadSoft1015#");
+define("LRS_MAIL_USER", "lreport@broadsoft.com");
+define("TO_NOTICE_MAIL_USER", "dstewart@broadsoft.com"); // set to NULL to disable notice emailing
+//define("XCHANGESUPPORT_EMAIL", "xchangesupport@broadsoft.com"); // set to "" to ignore
+
+// Note: if you want some action in your life as a programmer, it is *STRONGLY* advised to use your own email account for testing this feature. 
+// That way, you will wipe clean your inbox (like I did) and loose all knowledge about past tasks and requests.
+// I hope you have a good memory, otherwise your most frequent answer will be "sorry, I don't remember".
+// Perfect career-limiting move.
+
+if ($TESTING_MODE) {
+  // these lines are useful for testing.
+  // they make the script "callable" from the cmd-line
+  // act as the first user
+  global $user;
+  $user->uid = 1;
+  OPA_DebugPrint("OPA Testing mode is set to (" . $TESTING_MODE . ")", __LINE__);
+  OPA_DebugPrint("OPA Initializing env ...", __LINE__);
+  // change to the Drupal directory
+  $cwd = getcwd();
+  chdir('/usr/local/broadworks/apps/xchange');
+  // Drupal bootstrap throws some errors when run via command line
+  //  so we tone down error reporting temporarily
+  error_reporting(E_ERROR | E_PARSE);
+  // run the initial Drupal bootstrap process
+  require_once('includes/bootstrap.inc');
+  drupal_bootstrap(DRUPAL_BOOTSTRAP_SESSION);
+  // restore error reporting to its normal setting
+  error_reporting(E_ALL);
+  chdir($cwd);
+
+  OPA_DebugPrint("OPA Initializing env ... done", __LINE__);
+  // TODO: function 'downloadTechSupport' was not found anywherer
+  downloadTechSupport(ADVISOR_ROOT_DIR, ADVISOR_MAIL_SERVER_ADDRESS, ADVISOR_MAIL_USER, ADVISOR_MAIL_PASSWORD);
+}
+
+
+/**
+ * DebugUtility
+ **/
+function OPA_DebugPrint($val, $line, $verboseOverride = FALSE) {
+  global $user;
+  global $TESTING_MODE;
+  $retStr = "(l." . $line . ") ";
+
+  if (is_array($val) || is_object($val)) {
+    ob_start();
+    var_dump($val);
+    $ob = ob_get_contents();
+    ob_end_clean();
+    $retStr .= $ob;
+  }
+  else {
+    $retStr .= $val;
+  }
+
+  if ($verboseOverride || $TESTING_MODE || userIsAdministrator()) {
+    if ($TESTING_MODE == 'CMD') {
+      echo $retStr . "\n";
+    }
+    else {
+      DebugPrint2($retStr, TRUE);
+    }
+  }
+}
+
+/**
+ * Utility is used to patch information from xchange for the given release/serverType
+ **/
+function extractPatchInfo($releaseId, $serverType) {
+  global $DB;
+  $patchInfoResult = array();
+
+  $serverType = resolveServerName($serverType);
+
+  $query =
+    "SELECT    
+       node.nid, 
+       field_ev_ticket_id_value, node.title, node_revisions.body, 
+       from_unixtime(field_posted_date_value) as field_posted_date_value, 
+       field_disposition_value, field_update_binary_value, field_schema_change_value, field_affects_portal_comp_value, field_restart_required_value, 
+       field_oci_schema_change_value, field_system_critical_patch_value, field_accounting_change_value, 
+       field_localization_changes_value, field_help_change_value, field_oss_dtd_change_value, field_cap_change_value, 
+       field_sip_change_value, field_mgcp_change_value, field_config_schema_change_value, 
+       field_snmp_restart_required_value 
+     FROM {content_type_broadworks_patch}, {node_revisions}, {content_field_posted_date}, {node} 
+     JOIN (taxonomy_index as A, taxonomy_term_data as B) ON A.nid=node.nid AND A.tid=B.tid AND B.name = :rid 
+     JOIN (taxonomy_index as C, taxonomy_term_data as D) ON C.nid=node.nid AND C.tid=D.tid AND D.name = :stype 
+     WHERE
+       content_field_posted_date.nid = node.nid AND 
+       node.type='broadworks_patch' AND
+       node.nid = content_type_broadworks_patch.nid AND
+       node_revisions.vid = node.vid AND 
+       node.status = 1 ";
+
+  $query = "SELECT node.title, node.nid, node.created AS node_created,
+ 'node' AS field_data_field_accounting_change_node_entity_type,
+ 'node' AS field_data_field_affects_portal_comp_node_entity_type,
+ 'node' AS field_data_field_update_binary_node_entity_type,
+ 'node' AS field_data_body_node_entity_type,
+ 'node' AS field_data_field_cap_change_node_entity_type,
+ 'node' AS field_data_field_config_schema_change_node_entity_type,
+ 'node' AS field_data_field_disposition_node_entity_type,
+ 'node' AS field_data_field_ev_ticket_id_node_entity_type,
+ 'node' AS field_data_field_help_change_node_entity_type,
+ 'node' AS field_data_field_oci_schema_change_node_entity_type,
+ 'node' AS field_data_field_localization_changes_node_entity_type,
+ 'node' AS field_data_field_mgcp_change_node_entity_type,
+ 'node' AS field_data_field_oss_dtd_change_node_entity_type,
+ 'node' AS field_data_field_posted_date_node_entity_type,
+ 'node' AS field_data_field_schema_change_node_entity_type,
+ 'node' AS field_data_field_restart_required_node_entity_type,
+ 'node' AS field_data_field_sip_change_node_entity_type,
+ 'node' AS field_data_field_snmp_restart_required_node_entity_type,
+ 'node' AS field_data_field_system_critical_patch_node_entity_type
+ FROM {node} node
+ LEFT JOIN {taxonomy_index} taxonomy_index ON node.nid = taxonomy_index.nid
+ LEFT JOIN {taxonomy_term_data} taxonomy_term_data_5 ON taxonomy_index.tid = taxonomy_term_data_5.tid AND taxonomy_term_data_5.vid = '5' AND taxonomy_term_data_5.name = :stype
+ LEFT JOIN {taxonomy_term_data} taxonomy_term_data_3 ON taxonomy_index.tid = taxonomy_term_data_3.tid AND taxonomy_term_data_3.vid = '3' AND taxonomy_term_data_3.name = :rid
+ WHERE (( (node.status = '1') AND (node.type IN ('broadworks_patch')) ))";
+
+  $terms = taxonomy_get_term_by_name('R'.$releaseId);
+  $rel_tid = reset($terms)->tid;
+  $terms = taxonomy_get_term_by_name($serverType);
+  $com_tid = reset($terms)->tid;
+
+  $query = new EntityFieldQuery();
+  $query->entityCondition('entity_type', 'node')
+    ->entityCondition('bundle', 'broadworks_patch')
+    ->fieldCondition('field_broadworks_release', 'tid', $rel_tid)
+    ->fieldCondition('field_broadworks_component', 'tid', $com_tid);
+
+  $result = $query->execute();
+  $nids = array_keys($result['node']);
+  $nodes = node_load_multiple($nids);
+
+  //$result = db_query($query, array(':rid' => 'R' . $releaseId, ':stype' => $serverType));
+  foreach ($nodes as $line) {
+    $line = (array)$line;
+    $patchInfoResult[$line['title']] = $line;
+    $patchInfoResult[$line['title']]['dependencies'] = array();
+    $patchInfoResult[$line['title']]['missingDependencies'] = array();
+    $dependees = array();
+    if(isset($line['field_dependencies'][LANGUAGE_NONE])) {
+      foreach ($line['field_dependencies'][LANGUAGE_NONE] as $dependee) {
+        $dependees[] = $dependee['target_id'];
+      }
+    }
+    $dependencies = node_load_multiple($dependees);
+    foreach($dependencies as $d) {
+    $patchInfoResult[$line['title']]['dependencies'][] = $d->title;
+    }
+  }
+  /*$query =
+    "SELECT node.title, dependendentNode.title as dependendee 
+     FROM {content_type_broadworks_patch}, {node_revisions}, {content_field_posted_date}, 
+          {node} as dependendentNode, {content_field_dependencies}, {node} 
+     JOIN (taxonomy_index as A, taxonomy_term_data as B) ON A.nid=node.nid AND A.tid=B.tid AND B.name = :rid  
+     JOIN (taxonomy_index as C, taxonomy_term_data as D) ON C.nid=node.nid AND C.tid=D.tid AND D.name = :stype
+     WHERE    
+       content_field_posted_date.nid = node.nid AND 
+       node.type='broadworks_patch_advisor' AND 
+       node.nid = content_type_broadworks_patch.nid AND
+       node_revisions.vid = node.vid AND 
+       content_field_dependencies.nid=node.nid AND
+       dependendentNode.nid=content_field_dependencies.field_dependencies_nid AND 
+       node.status = 1 ";
+
+  $result = db_query($query, array(':rid' => 'R' . $releaseId, ':stype' => $serverType));
+  while ($line = $result->fetchAssoc()) {
+    $patchInfoResult[$line['title']]['dependencies'][] = $line['dependendee'];
+  }*/
+
+  return $patchInfoResult;
+}
+
+/**
+ * Utility is used to get the currently posted software manager on xchange
+ **/
+function getSwManager() {
+  $query =
+    "SELECT f.fid AS fid, f.filename AS filename, f.filepath AS filepath
+     FROM files f, node n, file_usage upload, taxonomy_index ti, taxonomy_term_data td
+     WHERE 
+       upload.fid = f.fid AND 
+       n.nid = upload.nid AND 
+       n.type = 'broadsoft_software' AND 
+       n.status = '1' AND 
+       ti.nid=n.nid AND 
+       ti.tid=td.tid AND 
+       td.name='Software Manager' 
+     ORDER BY f.fid DESC limit 1 ";
+
+  $terms = taxonomy_get_term_by_name('Software Manager');
+  $tid = reset($terms)->tid;
+  $query = "
+  SELECT f.fid AS fid, f.filename AS filename, f.uri AS filepath, n.nid AS eid
+  FROM file_managed f, node n, field_data_field_software_file sf, field_data_field_broadworks_component bc
+  WHERE
+    sf.field_software_file_fid = f.fid AND
+    sf.entity_id = n.nid AND
+    n.type = 'broadsoft_software' AND
+    n.status = '1' AND
+    bc.entity_id = n.nid AND
+    bc.field_broadworks_component_tid = :tid
+    ORDER BY f.fid DESC limit 1
+    ";
+
+  $result = db_query($query, array(':tid' => $tid));
+  while ($line = $result->fetchAssoc()) {
+    $tmpMatches = array();
+    $mgrResult = $line;
+    if (preg_match('/_([\d]*)\./', $line['filename'], $tmpMatches)) {
+      $mgrResult['version'] = $tmpMatches[1];
+    }
+    else {
+      $mgrResult['version'] = 'Not Available';
+    }
+    $bucket = 'file-storage-100';
+    $key = str_replace('s3://'.$bucket.'/', '', $line['filepath']);
+    $mgrResult['filepath'] = generate_signed_url($bucket, $key, FALSE);
+    $mgrResult['fid'] = $line['fid'];
+    $mgrResult['eid'] = $line['eid'];
+  }
+
+  $query2 = "SELECT ctbs.field_software_file_md5sum_value AS md5value
+             FROM {content_type_broadsoft_software} ctbs 
+             WHERE ctbs.field_software_file_fid = " . $mgrResult['fid'];
+  $query2 = "SELECT field_software_file_md5sum_value AS md5value
+              FROM field_data_field_software_file_md5sum fsm
+              WHERE fsm.entity_id = :eid";
+  $dbrow_f2 = db_query($query2, array(':eid' => $mgrResult['eid']))->fetchField();
+  if (isset($dbrow_f2)) {
+    $mgrResult['md5val'] = $dbrow_f2;
+  }
+
+  return $mgrResult;
+}
+
+/**
+ * Utility used to remove tech-support from DB and both disks
+ **/
+function OPA_remove_previous_techSupports($uid, $hostname, $status) {
+  // loop over all tech reports for key ($uid, $hostname, $status) and wipe them all
+  $query = "SELECT pat.path AS path
+            FROM {broadworks_patch_advisor} pat
+            WHERE pat.uid = :uid 
+              AND pat.hostname = :host 
+              AND pat.status = :status ";
+  $result = db_query($query, array(':uid' => $uid, ':host' => $hostname, ':status' => $status));
+  if (!$result) {
+    watchdog('patch advisor', 'Failed delete sql query  ' . $query, NULL, WATCHDOG_ERROR);
+  }
+  foreach ($result as $dbrow_f) {
+    $result = delete_file($dbrow_f->path);
+    if (!$result) {
+      watchdog('patch advisor', 'Cannot queue command delete file ' . $dbrow_f->path, NULL, WATCHDOG_ERROR);
+    }
+  }
+
+  $result = db_delete('broadworks_patch_advisor')
+    ->condition('uid', $uid)
+    ->condition('hostname', $hostname)
+    ->condition('status', $status)
+    ->execute();
+  if (!$result) {
+    watchdog('patch advisor', 'Cannot delete entries from patch advisor ' . $hostname, NULL, WATCHDOG_ERROR);
+  }
+  OPA_DebugPrint("Deleting previous tech support DB data for {" . $uid . ", " . $hostname . ", " . $status . "}", __LINE__);
+  watchdog('patch advisor', "OPA_remove_previous_techSupports($uid, $hostname, $status)", NULL, WATCHDOG_NOTICE);
+}
+
+/**
+ * Utility used to download tech-support EMAILS onto xchange
+ **/
+
+/**
+ * Utility used to send the parsed license information from xchange to the LRS
+ **/
+function sendLicencingData($licensingData, $rcpt = LRS_MAIL_USER) {
+  $subject = "TECH-SUPPORT";
+  $body = "... service usage ... service usage ... ... ... \r\n" . implode("\r\n", $licensingData);
+  $cc = NULL;
+  $sent = bs_SendEmail($subject, $body, $rcpt, $cc);
+  if ($sent) {
+    watchdog('patch advisor', "Sent Email: " . $rcpt, NULL, WATCHDOG_NOTICE);
+  }
+  else {
+    watchdog('patch advisor', "Failed to Send Email: " . $rcpt, NULL, WATCHDOG_ERROR);
+  }
+}
+

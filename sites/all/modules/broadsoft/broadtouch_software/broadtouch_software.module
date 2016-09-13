@@ -1,0 +1,651 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * Provides a "broadtouch_software" node type.
+ */
+
+
+/**
+ * NOTE: the module has hardcoded taxonomy IDs.
+ * Hardcoded IDs marked with TODO.
+ */
+
+/**
+ * NOTE: unknown DB table:
+ * content_type_broadtouch_software
+ */
+
+
+/**
+ * Implementation of hook_node_info().
+ */
+function broadtouch_software_node_info() {
+  // We return an array since a module can define multiple node types.
+  // We're only defining one node type, type 'broadtouch_software'.
+  return array(
+    'broadtouch_software' => array(
+      'name' => t('BroadTouch Software'), // Required.
+      'base' => 'broadtouch_software',  // Required.
+      'description' => t('BroadTouch Software Item'), // Required.
+      'has_title' => TRUE,
+      'title_label' => t('Title'),
+      'has_body' => TRUE,
+      'body_label' => t('Description'),
+      'min_word_count' => 0,
+      'locked' => FALSE
+    )
+  );
+}
+
+/**
+ * Implementation of hook_permission().
+ */
+function broadtouch_software_permission() {
+  return array(
+    'view broadtouch_software' => array(
+      'title' => t('View broadtouch software'),
+    ),
+    'create broadtouch_software' => array(
+      'title' => t('Create broadtouch software'),
+    ),
+    'edit any broadtouch_software' => array(
+      'title' => t('Edit any broadtouch software'),
+    ),
+    'delete any broadtouch_software' => array(
+      'title' => t('Delete any broadtouch software'),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_node_access().
+ */
+function broadtouch_software_node_access($op, $node, $account) {
+
+  switch ($op) {
+    case 'view':
+      if (strlen($account->mail) == 0) {
+        return NODE_ACCESS_IGNORE;
+      }
+      //Dynamically allow access for AOI = BETA
+      if (isset($node->field_taxonomy) && is_array($node->field_taxonomy)) {
+        foreach ($node->field_taxonomy['und'] as $taxonomy) {
+          // TODO: TERM_CLIENTS_BETA defined at 'broadsoft_ticketing_integration' module.
+          if ($taxonomy['tid'] === TERM_CLIENTS_BETA) {
+            return NODE_ACCESS_ALLOW;
+          }
+        }
+      }
+      if ($node->field_access_list[0]['value'] == "all") {
+        return NODE_ACCESS_ALLOW;
+      }
+      $userEmailDomain = preg_replace('/.*@/', '', $account->mail);
+      if ($userEmailDomain == "broadsoft.com") {
+        return NODE_ACCESS_ALLOW;
+      }
+      return user_access('view broadtouch_software',
+        $account) && (preg_match('/^' . $userEmailDomain . ';/',
+          $node->field_access_list[0]['value']) || preg_match('/;' . $userEmailDomain . ';/',
+          $node->field_access_list[0]['value']));
+    case 'create':
+      return user_access('create broadtouch_software', $account);
+    case 'update':
+      return user_access('edit any broadtouch_software', $account);
+    case 'delete':
+      return user_access('delete any broadtouch_software', $account);
+  }
+}
+
+/**
+ * Implementation of hook_form().
+ */
+function broadtouch_software_form($node) {
+  // Get metadata for this node type
+  // (we use it for labeling title and body fields).
+  // We defined this in broadtouch_software_node_info().
+  $type = node_type_get_types();
+  $type = $type['broadtouch_software'];
+
+  $form['title'] = array(
+    '#type' => 'textfield',
+    '#title' => check_plain($type->title_label),
+    '#required' => TRUE,
+    '#default_value' => isset($node->title) ? $node->title : '',
+    '#weight' => -5,
+    '#maxlength' => 255,
+  );
+
+  return $form;
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function broadtouch_software_form_alter(&$form, $form_state, $form_id) {
+  if ($form_id == 'broadtouch_software_node_form') {
+    $type = node_type_get_types();
+    $type = $type['broadtouch_software'];
+
+    $form['body']['und'][0]['#title'] = check_plain($type->body_label);
+  }
+}
+
+
+/** ===========================================================================
+ * Called from a view
+ */
+function broadtouch_software_get_viewable_nodes($uid, $email) {
+  $ret = array();
+
+  if (userIsAdministrator() || preg_match('/@broadsoft.com/', $email)) {
+    // super admin or BS employee: return all
+    $query = "SELECT content_type_broadtouch_software.nid as nid FROM {content_type_broadtouch_software} ";
+    $result = db_query($query);
+    foreach ($result as $row) {
+      if ($row->nid) {
+        $ret[] = $row->nid;
+      }
+    }
+
+    return $ret;
+  }
+
+  $userEmailDomain = preg_replace('/.*@/', '', $email);
+
+  $query2 = "SELECT content_type_broadtouch_software.nid as nid
+    		 FROM {content_type_broadtouch_software}
+    		 WHERE content_type_broadtouch_software.field_access_list_value='all' 
+    		    OR content_type_broadtouch_software.field_access_list_value LIKE :useremail1 
+    		    OR content_type_broadtouch_software.field_access_list_value LIKE :useremail2 ";
+
+  $result2 = db_query($query2, array(':useremail1' => $userEmailDomain . ';%', ':useremail2' => '%;' . $userEmailDomain . ';%'));
+  foreach ($result2 as $row2) {
+    if ($row2->nid) {
+      $ret[] = $row2->nid;
+    }
+  }
+
+  return $ret;
+}
+
+/** ===========================================================================
+ * Called from a view
+ */
+function broadtouch_software_get_viewable_branded_nodes($uid, $email) {
+  $ret = array();
+
+  if (userIsAdministrator() || preg_match('/@broadsoft.com/', $email)) {
+    // super admin or BS employee: return all
+    $query = "SELECT content_type_broadtouch_software.nid as nid 
+              FROM {content_type_broadtouch_software} 
+              WHERE content_type_broadtouch_software.field_access_list_value <> 'all' ";
+    $result = db_query($query);
+    foreach ($result as $row) {
+      if ($row->nid) {
+        $ret[] = $row->nid;
+      }
+    }
+
+    return $ret;
+  }
+
+  $userEmailDomain = preg_replace('/.*@/', '', $email);
+
+  $query2 = "SELECT content_type_broadtouch_software.nid as nid
+    				 FROM {content_type_broadtouch_software}
+    				 WHERE content_type_broadtouch_software.field_access_list_value LIKE :useremail1  
+    				    OR content_type_broadtouch_software.field_access_list_value LIKE :useremail2 ";
+
+  $result2 = db_query($query2, array(':useremail1' => $userEmailDomain . ';%', ':useremail2' => '%;' . $userEmailDomain . ';%'));
+  foreach ($result2 as $row2) {
+    if ($row2->nid) {
+      $ret[] = $row2->nid;
+    }
+  }
+
+  return $ret;
+}
+
+/** ===========================================================================
+ * Called from a view
+ */
+function broadtouch_software_get_viewable_generic_nodes($uid, $email) {
+  $ret = array();
+
+  $query = "SELECT content_type_broadtouch_software.nid as nid 
+            FROM {content_type_broadtouch_software} 
+            WHERE content_type_broadtouch_software.field_access_list_value = 'all' ";
+  $result = db_query($query);
+  foreach ($result as $row) {
+    if ($row->nid) {
+      $ret[] = $row->nid;
+    }
+  }
+
+  return $ret;
+}
+
+/** ===========================================================================
+ * Called from a view
+ */
+function getBTouchFilterSelection(&$selectedPlatform, &$selectedRelease) {
+  // figure what the values are from the URL - or default values
+  //......................................
+  if (isset($_GET['platform'])) {
+    $selectedPlatform = $_GET['platform'];
+  }
+  else {
+    if (isset($_SESSION['views']['BroadTouch_software_Branded']['default']['platform'])) {
+      $selectedPlatform = $_SESSION['views']['BroadTouch_software_Branded']['default']['platform'];
+    }
+    else {
+      // TODO: filter value is hardcoded.
+      $selectedPlatform = 279;
+    }
+  }
+  //......................................
+  if (isset($_GET['release'])) {
+    $selectedRelease = $_GET['release'];
+  }
+  else {
+    if (isset($_SESSION['views']['BroadTouch_software_Branded']['default']['release'])) {
+      $selectedRelease = $_SESSION['views']['BroadTouch_software_Branded']['default']['release'];
+    }
+    else {
+      // TODO: filter value is hardcoded.
+      $selectedRelease = 276;
+    }
+  }
+}
+
+/** ===========================================================================
+ * Called from a view
+ */
+function printBTouchSoftwarePage() {
+  getBTouchFilterSelection($platform, $release);
+
+  // set the SESSION :: views values so that tabs can filter correctly
+  $_SESSION['views']['BroadTouch_software_Branded']['default']['platform'] = $platform;
+  $_SESSION['views']['BroadTouch_software_Branded']['default']['release'] = $release;
+
+  $_SESSION['views']['software_patch_bundles']['default']['platform'] = $platform;
+  $_SESSION['views']['software_patch_bundles']['default']['release'] = $release;
+
+  if (empty($_POST)) { //@@@ why empty post???
+    print '
+		<table id="Software Download Center">
+		  <tr>
+		    <td>
+		      <form action="/php/xchange/support/broadtouch/businesscommunicator/softwareTMP"  accept-charset="UTF-8" method="get" id="views-exposed-form-software-download-center-page-1">
+		        <div>
+		          <div class="views-exposed-form">
+		            <div class="views-exposed-widgets clear-block">
+		';
+    //................. filter list: Release
+    $filterLabel = 'BroadTouch Release';
+    $selectLabel = 'release'; // one word
+    $IgnoreList = array();
+    // TODO: taxonomy tree has hardcoded value.
+    $vocab = taxonomy_get_tree(17);
+    $selectedElement = $release;
+    print '<div class="views-exposed-widget">
+		        <label for="edit-release">' . $filterLabel . '</label>
+		          <div class="views-widget">
+		            <div class="form-item" id="edit-release-wrapper">
+		              <select name="' . $selectLabel . '" class="form-select" id="edit-release" >';
+    foreach ($vocab as $value) {
+      $ignore = FALSE;
+      for ($i = 0; $i < sizeof($IgnoreList); $i++) {
+        if ($value->tid == $IgnoreList[$i]) {
+          $ignore = TRUE;
+        }
+      }
+      if (!$ignore) {
+        print '<option value="' . $value->tid . '" ' . ($value->tid == $selectedElement ? 'selected="selected"' : '') . '>' . $value->name . '</option>';
+      }
+    }
+    print '       </select>
+                </div>
+              </div>
+            </div>';
+    //................. filter list: Platform
+    $filterLabel = 'Platform';
+    $selectLabel = 'platform'; // one word
+    $IgnoreList = array();
+    // TODO: taxonomy tree has hardcoded value.
+    $vocab = taxonomy_get_tree(18);
+    $selectedElement = $platform;
+    print '<div class="views-exposed-widget">
+		        <label for="edit-release">' . $filterLabel . '</label>
+		          <div class="views-widget">
+		            <div class="form-item" id="edit-release-wrapper">
+		              <select name="' . $selectLabel . '" class="form-select" id="edit-release" >';
+
+    foreach ($vocab as $value) {
+      $ignore = FALSE;
+      for ($i = 0; $i < sizeof($IgnoreList); $i++) {
+        if ($value->tid == $IgnoreList[$i]) {
+          $ignore = TRUE;
+        }
+      }
+      if (!$ignore) {
+        print '<option value="' . $value->tid . '" ' . ($value->tid == $selectedElement ? 'selected="selected"' : '') . '>' . $value->name . '</option>';
+      }
+    }
+    print '       </select>
+                </div>
+              </div>
+            </div>';
+    //................. filter list: Hide already downloaded 
+//	if (isset($_GET['hide_dwld'])){
+//	  $hide_dwld=$_GET['hide_dwld'];
+//	}
+//		print '<div class="views-exposed-widget">
+//		         <label for="edit-hide_dwld">Hide Already Downloaded</label>
+//		           <div class="views-widget">
+//		             <div class="form-item" id="edit-platform-wrapper">
+//		               <select name="hide_dwld" class="form-select" id="edit-hide_dwld" >';
+//		print '<option value="yes"'.($hide_dwld=='yes'?'selected="selected"':'').'>yes</option>';
+//		print '<option value="no"'.($hide_dwld=='yes'?'':'selected="selected"').'>no</option>';
+//		print '       </select>
+//                </div>
+//              </div>
+//            </div>';
+    //....................
+    print '<div class="views-exposed-widget">
+		         <input type="submit" id="edit-submit-software-download-center" value="Apply"  class="form-submit" />
+		       </div>
+        </div>
+      </div>
+    </div>
+  </form>';
+
+    print "
+	    </td>
+	  </tr>
+	</table>";
+  }
+  // TODO: quicktabs has hardcoded value.
+  $quicktabs = quicktabs_load(4);
+  print theme('quicktabs', $quicktabs);
+}
+
+
+/**
+ * Implements hook_block_info().
+ */
+function broadtouch_software_block_info() {
+  $blocks['broadtouch_software_block_1']['info'] = t('BroadTouch Base Software Download');
+  $blocks['broadtouch_software_block_1']['properties']['administrative'] = TRUE;
+
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function broadtouch_software_block_view($delta = '') {
+  if ($delta == 'broadtouch_software_block_1') {
+
+    $view = views_get_current_view();
+    getBTouchFilterSelection($platformTid, $releaseTid);
+
+    $block['subject'] = t('BTBC Base Software Download');
+
+    if (empty($platformTid) || empty($releaseTid)) {
+      if (empty($platformTid)) {
+        $block['content'] .= t('Please select a Platform in the above list\n');
+      }
+      else {
+        $block['content'] .= t('Please select a Release in the above list\n');
+      }
+    }
+    else {
+      $header = array(
+        'Title',
+        'Description',
+        'md5sum',
+        'Already <br>Downloaded'
+      );
+
+      $rows = array();
+
+      // TODO: query contains has hardcoded taxonomy ID.
+      $query = "SELECT n.nid AS nid, f.filename AS filename, f.uri AS filepath
+				FROM {file_managed} f, {node} n, {file_usage} upload
+				INNER JOIN {taxonomy_index} tn1 ON upload.nid = tn1.nid 
+				LEFT JOIN {taxonomy_index} tn2 ON upload.nid = tn2.nid 
+				LEFT JOIN {taxonomy_index} tn3 ON upload.nid = tn3.nid 
+				WHERE upload.fid = f.fid 
+                  AND n.nid = upload.id
+                  AND n.status = '1'
+                  AND n.type = 'broadtouch_software' 
+                  AND tn1.tid = :rtid
+                  AND tn2.tid = '245'
+                  AND tn3.tid = :ptid
+			  ORDER BY n.nid DESC";
+      //TODO: taxonomy ID: 245 - btbc
+
+      $result = db_query($query, array(':rtid' => $releaseTid, ':ptid' => $platformTid));
+      $found = FALSE;
+      foreach ($result as $dbrow_f) {
+        $query2 = "SELECT field_md5_value, field_access_list_value
+				    FROM content_type_broadtouch_software
+					WHERE nid = :nid ";
+        $dbrow_f2 = db_query($query2, array(':nid' => $dbrow_f->nid));
+        if (is_object($dbrow_f2) && $dbrow_f2->field_access_list_value == 'all') {//@@@ generic only (all) or link to branded if psovided??
+          $found = TRUE;
+          $fpath = preg_replace('/\/bw\//', '/%2Fbw/',
+            "system/files" . $dbrow_f->filepath);
+          $rows[] = array(
+            l(basename($dbrow_f->filename), $fpath),
+            'Base Software',
+            $dbrow_f2->field_md5_value,
+            '-'
+          );
+        }
+      }
+      if (!$found) {
+        $rows[] = array('(none)', 'Base Software', '-', '-');
+      }
+
+      // ***** Release Notes for this rel (this is a BS Document)
+      // TODO: query contains has hardcoded taxonomy IDs.
+      $query = "SELECT f.filename AS filename, f.uri AS filepath
+				FROM {file_managed} f, {node} n, {file_usage} upload
+				INNER JOIN {taxonomy_index} tn1 ON upload.nid = tn1.nid 
+				LEFT JOIN {taxonomy_index} tn2 ON upload.nid = tn2.nid 
+				LEFT JOIN {taxonomy_index} tn3 ON upload.nid = tn3.nid 
+				LEFT JOIN {taxonomy_index} tn4 ON upload.nid = tn4.nid 
+				LEFT JOIN {taxonomy_index} tn5 ON upload.nid = tn5.nid 
+				WHERE upload.fid = f.fid 
+                  AND n.nid = upload.id
+                  AND n.status = '1'
+                  AND tn1.tid = '104' 
+                  AND tn2.tid = :rtid 
+                  AND tn3.tid = '243' 
+                  AND tn4.tid = '245'
+                  AND tn5.tid = :ptid
+			  ORDER BY n.nid DESC";
+      //TODO: taxonomy ID: 104 - rel notes
+      //TODO: taxonomy ID: 243 - bt doc
+      //TODO: taxonomy ID: 245 - btbc
+
+      $dbrow_f = db_query($query, array(':rtid' => $releaseTid, ':ptid' => $platformTid));
+      if (is_object($dbrow_f)) { // pick first one - highest nid - must be latest
+        $fpath = preg_replace('/\/bw\//', '/%2Fbw/',
+          "system/files" . $dbrow_f->filepath);
+        $rows[] = array(
+          l(basename($dbrow_f->filename), $fpath),
+          'Release Notes',
+          '-',
+          '-'
+        );
+      }
+      else {
+        $rows[] = array('(none)', 'Release Notes', '-', '-');
+      }
+    }
+
+    $attributes = array(
+      //'border'      => 1,
+      'width' => "100%",
+      'class' => 'views-table sticky-enabled cols-1 sticky-enabled',
+    );
+    if (count($rows)) {
+      $variables = array(
+        'header' => $header,
+        'rows' => $rows,
+        'attributes' => $attributes,
+      );
+      $block['content'] .= theme_table($variables);
+    }
+    else {
+      $block['content'] .= "There is no base software corresponding to your selection";
+    }
+
+    return $block;
+  }
+}
+
+
+/** ===========================================================================
+ * Implementation of hook_block
+ *
+ * @param string  $op    one of "list", "view", "save" and "configure" (i.e. calling context)
+ * @param integer $delta code to identify the block (a module can have multiple blocks)
+ * @param array   $edit  only for "save" operation
+ *
+ * @return none
+ *
+ * @see http://drupal.org/node/206758
+ **/
+function broadtouch_software_block($op = 'list', $delta = 0, $edit = array()) {
+
+  if ($op == "list") {
+    // Generate listing of blocks from this module, for the admin/block page
+    $block = array();
+    $block[0]["info"] = t('BroadTouch Base Software Download');
+    return $block;
+  }
+  else {
+    if ($op == 'view') {
+      $view = views_get_current_view();
+      getBTouchFilterSelection($platformTid, $releaseTid);
+
+      $block['subject'] = t('BTBC Base Software Download');
+
+      if (empty($platformTid) || empty($releaseTid)) {
+        if (empty($platformTid)) {
+          $block['content'] .= t('Please select a Platform in the above list\n');
+        }
+        else {
+          $block['content'] .= t('Please select a Release in the above list\n');
+        }
+      }
+      else {
+        $header = array(
+          'Title',
+          'Description',
+          'md5sum',
+          'Already <br>Downloaded'
+        );
+
+        $rows = array();
+
+        // TODO: query contains has hardcoded taxonomy ID.
+        $query = "SELECT n.nid AS nid, f.filename AS filename, f.uri AS filepath
+                  FROM {file_managed} f, {node} n, {file_usage} upload
+                  INNER JOIN {taxonomy_index} tn1 ON upload.nid = tn1.nid 
+                  LEFT JOIN {taxonomy_index} tn2 ON upload.nid = tn2.nid 
+                  LEFT JOIN {taxonomy_index} tn3 ON upload.nid = tn3.nid 
+                  WHERE upload.fid = f.fid 
+                    AND n.nid = upload.id
+                    AND n.status = '1'
+                    AND n.type = 'broadtouch_software' 
+                    AND tn1.tid = :rtid 
+                    AND tn2.tid = '245'
+                    AND tn3.tid = :ptid 
+                ORDER BY n.nid DESC";
+        //TODO: taxonomy ID: 245 - btbc
+
+        $result = db_query($query, array(':rtid' => $releaseTid, ':ptid' => $platformTid));
+        $found = FALSE;
+        foreach ($result as $dbrow_f) {
+          $query2 = "SELECT field_md5_value, field_access_list_value
+                     FROM content_type_broadtouch_software
+                     WHERE nid = :nid ";
+          $dbrow_f2 = db_query($query2, array(':nid' => $dbrow_f->nid));
+          if (is_object($dbrow_f2) && $dbrow_f2->field_access_list_value == 'all') {//@@@ generic only (all) or link to branded if psovided??
+            $found = TRUE;
+            $fpath = preg_replace('/\/bw\//', '/%2Fbw/',
+              "system/files" . $dbrow_f->filepath);
+            $rows[] = array(
+              l(basename($dbrow_f->filename), $fpath),
+              'Base Software',
+              $dbrow_f2->field_md5_value,
+              '-'
+            );
+          }
+        }
+        if (!$found) {
+          $rows[] = array('(none)', 'Base Software', '-', '-');
+        }
+
+        // ***** Release Notes for this rel (this is a BS Document)
+        // TODO: query contains has hardcoded taxonomy IDs.
+        $query = "SELECT f.filename AS filename, f.uri AS filepath
+                  FROM {file_managed} f, {node} n, {file_usage} upload
+                  INNER JOIN {taxonomy_index} tn1 ON upload.nid = tn1.nid 
+                  LEFT JOIN {taxonomy_index} tn2 ON upload.nid = tn2.nid 
+                  LEFT JOIN {taxonomy_index} tn3 ON upload.nid = tn3.nid 
+                  LEFT JOIN {taxonomy_index} tn4 ON upload.nid = tn4.nid 
+                  LEFT JOIN {taxonomy_index} tn5 ON upload.nid = tn5.nid 
+                  WHERE upload.fid = f.fid 
+                    AND n.nid = upload.id
+                    AND n.status = '1'
+                    AND tn1.tid = '104' 
+                    AND tn2.tid = :rtid 
+                    AND tn3.tid = '243' 
+                    AND tn4.tid = '245'
+                    AND tn5.tid = :ptid 
+                  ORDER BY n.nid DESC";
+        //TODO: taxonomy ID: 104 - rel notes
+        //TODO: taxonomy ID: 243 - bt doc
+        //TODO: taxonomy ID: 245 - btbc
+
+        $dbrow_f = db_query($query, array(':rtid' => $releaseTid, ':ptid' => $platformTid));
+        if (is_object($dbrow_f)) { // pick first one - highest nid - must be latest
+          $fpath = preg_replace('/\/bw\//', '/%2Fbw/',
+            "system/files" . $dbrow_f->filepath);
+          $rows[] = array(
+            l(basename($dbrow_f->filename), $fpath),
+            'Release Notes',
+            '-',
+            '-'
+          );
+        }
+        else {
+          $rows[] = array('(none)', 'Release Notes', '-', '-');
+        }
+      }
+
+      $attributes = array(
+        //'border'      => 1,
+        'width' => "100%",
+        'class' => 'views-table sticky-enabled cols-1 sticky-enabled',
+      );
+      if (count($rows)) {
+        $block['content'] .= theme_table($header, $rows, $attributes);
+      }
+      else {
+        $block['content'] .= "There is no base software corresponding to your selection";
+      }
+
+      return $block;
+    }
+  }
+}
+

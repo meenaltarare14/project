@@ -1,0 +1,6 @@
+name = Broadsoft Ticketing
+description = Broadsoft Ticketing Forms wip
+package = "Broadsoft"
+project = "Broadsoft"
+version = "7.1"
+core = "7.x"

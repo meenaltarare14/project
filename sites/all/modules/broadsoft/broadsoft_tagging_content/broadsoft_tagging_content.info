@@ -1,0 +1,5 @@
+name = Broadsoft Tagging Content
+description = "Allow certain Internal Users the ability to add tags to any content page or edit existing tags."
+package = Content
+core = 7.x
+; configure =

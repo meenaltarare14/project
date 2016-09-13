@@ -1,0 +1,4 @@
+.ui-tabs .ui-widget-header {border: none;background: none;border-bottom: 5px solid #2c8fae;}
+.ui-state-active, .ui-widget-content .ui-state-active, .ui-widget-header .ui-state-active { border: 1px solid #2c8fae; background: #2c8fae; font-weight: bold; color: #fff; }
+
+.ui-state-hover, .ui-widget-content .ui-state-hover, .ui-widget-header .ui-state-hover, .ui-state-focus, .ui-widget-content .ui-state-focus, .ui-widget-header .ui-state-focus { border: 1px solid #ddd; background: #6eceed; font-weight: bold; color: #ffffff; }

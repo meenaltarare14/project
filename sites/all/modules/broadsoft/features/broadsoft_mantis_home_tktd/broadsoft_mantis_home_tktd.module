@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the broadsoft_mantis_home_tktd feature.
+ */
+
+include_once 'broadsoft_mantis_home_tktd.features.inc';

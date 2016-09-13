@@ -1,0 +1,1445 @@
+<?php
+
+// TODO Mutual_NDA_Version_4.1.pdf is required here
+define("NDA_FILE", drupal_get_path('module', 'broadsoft_account_request')."/PDF/Mutual_NDA_Version_4.1.pdf");
+
+
+/**
+ * This function is for printing debug message
+ * @param $line
+ * @param $str
+ */
+function DebugPrint($line, $str) {
+  if (module_exists('devel')) {
+    dpm("$line $str");
+  }
+}
+
+/** =======================================================================
+ * Valid permissions for this module
+ * @return array An array of valid permissions for the broadsoft account request module
+ */
+/**
+ * Implements hook_permission().
+ */
+function broadsoft_account_request_permission() {
+  return array(
+    'access broadsoft account request content' => array(
+      'title' => t('Access broadsoft account request content'),
+      'description' => t('For admins to access broadsoft account request content.'),
+    ),
+  );
+}
+
+
+/** =======================================================================
+ **/
+function broadsoft_account_request_init() {
+  // module_load_include(file type, module name, typeless file name);
+  // TODO LDAP test account is needed for testing.
+  module_load_include('php', 'broadsoft_user_management', '/LDAPIntegration.class');
+  // TODO SFDC test account is needed for testing.
+  module_load_include('php', 'broadsoft_user_management', '/SFDC/SFDCIntegration.class');
+  // TODO do we need this or shall we use the global SMTP, is we have?
+  module_load_include('php', 'broadsoft_account_request', '/PHPMailer/PHPMailerAutoload');
+}
+
+/**
+ * Implements hook_block_info().
+ */
+function broadsoft_account_request_block_info() {
+  // Many options are defined in hook_block_info():
+  $blocks['broadsoft_account_request_form'] = array(
+    // info: The name of the block.
+    'info' => t('BroadSoft Account Request Form'),
+  );
+  $blocks['broadsoft_set_password_form'] = array(
+    // info: The name of the block.
+    'info' => t('BroadSoft Set Password Form'),
+  );
+
+  return $blocks;
+}
+
+
+/**
+ * Implements hook_block_view().
+ */
+function broadsoft_account_request_block_view($delta = '') {
+  switch ($delta) {
+    case 'broadsoft_account_request_form':
+      $block['content'] = drupal_get_form('broadsoft_account_request_form');
+      break;
+    case 'broadsoft_set_password_form':
+      $block['content'] = drupal_get_form('broadsoft_set_password_form');
+      break;
+  }
+  return $block;
+}
+
+/** =======================================================================
+ * @see Pro Drupal dev pp 230ss
+ * This function is called ONLY if all required fields are present!
+ **/
+function broadsoft_set_password_validate($form, &$form_state) {
+  DebugPrint(__LINE__, "entering broadsoft_set_password_validate()");
+  if (!isEmailSyntaxOK($form_state['values']['email'])) {
+    form_set_error('email', t('Invalid email format'));
+  }
+
+  // make lookup to db to make sure email matches token
+  $query = db_query("SELECT token FROM {account_tmp_info} WHERE email = '%s'", $form_state['values']['email']);
+  $row = db_fetch_array($query);
+  $dbtoken = $row['token'];
+  DebugPrint(__LINE__, "Token retreived is " . $dbtoken . " vs " . $form_state['values']['token']);
+  if ($form_state['values']['token'] != $dbtoken) {
+    form_set_error('token', t('Token and Email provided do not match'));
+    return; // exit now so as not to give extra info to the world, like existence of a username
+  }
+
+  // make sure user name is of the right form
+  if (!ctype_alnum(preg_replace('/_/', '', $form_state['values']['username']))) {
+    form_set_error('username', t('User Name must be alphanumeric'));
+  }
+
+  // make sure user name is available in Drupal
+  $query = db_query("SELECT * FROM {users} WHERE name = '%s'", $form_state['values']['username']);
+  $row = db_fetch_array($query);
+  if ($row) {
+    form_set_error('username', t('User Name already in usage, please choose something else'));
+  }
+}
+
+
+/** =======================================================================
+ **/
+function isEmailSyntaxOK($email) {
+  $emailSyntax = '/^([\'a-zA-Z0-9_\-\.]+)@([a-zA-Z0-9_\-\.]+)$/';
+
+  if (preg_match($emailSyntax, $email) == 0) {
+    return FALSE;
+  }
+  return TRUE;
+}
+
+
+/** =======================================================================
+ * @see Pro Drupal dev pp 230ss
+ **/
+function broadsoft_set_password_submit($form, &$form_state) {
+  DebugPrint(__LINE__, "entering broadsoft_set_password_submit()");
+
+  // match token-email already checked in validate()
+  $myLdap = new LDAPIntegration();
+  $pattern = '/\/.*\//'; // must be in same format as regular sed, i.e. between / and /
+
+  // make a ldap uid, cn... based on what was entered by user when he requested the account
+  $query = db_query("SELECT * FROM {account_tmp_info} WHERE email = '%s'", $form_state['values']['email']);
+  $row = db_fetch_array($query);
+  $first_name = $row['first_name'];
+  $last_name = $row['last_name'];
+
+  DebugPrint(__LINE__, "Preparing to add user in ldap, name = " . $first_name . " " . $last_name);
+  $sn = $last_name;
+  $cn = $first_name[0] . ' ' . $last_name;
+  if ($myLdap->addUser($sn, $form_state['values']['username'], $form_state['values']['email'], $form_state['values']['pass'], "")) {
+    // set privilege for that user based on what was found on sfdc
+    if ($row['rid'] > 0) {
+      $myLdap->changeGroupMembership("Grant", $row['rid'], $form_state['values']['email']);
+    }
+
+    // everything goes well, redirect to thank you page
+    $form_state['redirect'] = 'account_request/account_activated';
+  }
+  else {
+    $form_state['redirect'] = 'account_request/error';
+  }
+}
+
+
+/** =======================================================================
+ * @see Pro Drupal dev pp 230ss
+ * This function is called ONLY if all required fields are present!
+ * So some validation has already been made
+ **/
+function broadsoft_account_request_validate($form, &$form_state) {
+  DebugPrint(__LINE__, "entering broadsoft_account_request_validate()");
+
+  $error = FALSE;
+  // Validation starts if email is provided.
+  if (!empty($form_state['values']['email'])) {
+    // Check email format first
+    if (!isEmailSyntaxOK($form_state['values']['email'])) {
+      form_set_error('email', t('Invalid email format'));
+    }
+    else {
+      // check against restricted email domains
+      $rejectDomains = preg_split("/[\r\n,]+/", variable_get("broadsoft_general_rejected_domains"));
+      // main email
+      $splitEmail = explode('@', $form_state['values']['email']);
+      $user_domain = $splitEmail[1];
+      for ($i = 0; $i < count($rejectDomains); $i++) {
+        if ($user_domain == $rejectDomains[$i]) {
+          form_set_error('email', t("Sorry, " . $user_domain . " is not recognized as a valid business email domain for a BroadSoft Xchange account. Please enter another email address."));
+          $error = TRUE;
+        }
+      }
+
+      if(!$error) {
+        // Check that the class exists before trying to use it
+        if (class_exists('LDAPIntegration')) {
+          $myLdap = new LDAPIntegration();
+
+          if ($myLdap->getLDAPUserDataFromEmail($form_state['values']['email'])) {
+            form_set_error('email', t('This email maps to a registered user; please reset your password if needed'));
+          }
+        }
+        else {
+          form_set_error('email', t('LDAPIntegration class not exists. Please enable the LDAP first.'));
+        }
+
+      }
+
+    }
+  }
+
+  // alternate email
+//  $splitEmail = split('@', $form_state['values']['EMS_account_email']);
+//  $user_domain = $splitEmail[1];
+//  for ($i = 0; $i < count($rejectDomains); $i++) {
+//    if ($user_domain == $rejectDomains[$i]) {
+//      form_set_error('email', t("Sorry, " . $user_domain . " is not recognized as a valid business email domain for a BroadSoft Xchange account. Please enter another email address."));
+//    }
+//  }
+}
+
+
+/** =======================================================================
+ * @see Pro Drupal dev pp 230ss
+ **/
+function broadsoft_account_request_submit($form, &$form_state) {
+  DebugPrint(__LINE__, "entering broadsoft_account_request_submit()");
+  $form_state['redirect'] = broadsoft_account_request_SFDC_Interaction($form, $form_state);
+}
+
+
+/** =======================================================================
+ * Return: the url to redirect to
+ **/
+function broadsoft_account_request_SFDC_Interaction($form, &$form_state) {
+  $redirectPage = 'account_request/thankyou';
+  $mySFDCClient = new SFDCIntegration();
+
+  $gNDA_EXPIRATION_DAYS_ALLOWED = 7; // check if NDA expires in less than _ days
+
+//  $EMS_requested = $form_state['values']['state_prov'] == 'Yes' ? TRUE : FALSE;
+  // extract domain from email
+  $splitEmail = explode('@', $form_state['values']['email']);
+  $user_domain = $splitEmail[1];
+
+  if (preg_match('/huawei.com/', $user_domain)) {
+    return 'account_request/error';
+  }
+
+  // globals
+  $gSFDCNbMatchedAccounts = 0;
+  $gSFDCMatchedAccounts = "";
+  $gSFDCValidNDA = FALSE;
+  $gSFDCValidLICENSE = FALSE;
+  $gSFDCAccountIsActiveOrJeopardy = FALSE;
+  $gSFDCNDAExpiration = "";
+  $gSFDCAccountNb = "n.a.";
+  $gSFDCCompanyXchangeAccessLevel = "n.a.";
+  $retRawData = array();
+
+  $BroadsoftEmployeeBypass = FALSE;
+  if ($user_domain == 'broadsoft.com') {
+    // special case: BroadSoft employee -------------------------------------------------------------------------------------
+    $whichCase = "BroadSoft Employee: Successful";
+    DebugPrint(__LINE__, "CASE: BroadSoft Employee");
+    $msg = 'Success, Xchange Account Created';
+    // create account in xchange
+    $UserRid = 0;// ok for employees, will be overriden anyway at login-time
+
+    // remove any previous tokens associated to that email, so no duplicate
+    db_query("DELETE FROM {account_tmp_info} WHERE email = '%s'", $form_state['values']['email']);
+
+    // generate token
+    $token = substr(str_shuffle("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"), 0, 40); // '#!%@' breaks something
+    DebugPrint(__LINE__, "Account Creation, Token generated = " . $token . " for user " . $form_state['values']['email']);
+
+    db_query("INSERT INTO {account_tmp_info} (token, email, first_name, last_name, company, location, rid) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')",
+      $token,
+      $form_state['values']['email'],
+      $form_state['values']['first_name'],
+      $form_state['values']['last_name'],
+      $form_state['values']['company'],
+//      $form_state['values']['title'],
+//      $form_state['values']['city'] . ", " . $form_state['values']['state_prov'] . ", " . $form_state['values']['Country'],
+      $form_state['values']['Country'],
+      $UserRid);
+
+    // send credentials to user
+    $titleUserEmail = "Your BroadSoft Xchange account activation credentials";
+    $bodyUserEmail = "" .
+      "A BroadSoft Xchange account has been requested using your email address: " . $form_state['values']['email'] . ".\n" .
+      "\n" .
+      "If this was not you, you may safely do nothing.\n" .
+      "\n" .
+      "If you wish to proceed and activate your Xchange account, please visit this address:\n" .
+      XCHANGE_BASE_URL . "/account_request/SetPasswordForm" .
+      //............ all info to be passed to client when validating account ..............
+      "?token=" . $token .
+      "&first=" . $form_state['values']['first_name'] .
+      "&last=" . $form_state['values']['last_name'] .
+      //...................................................................................
+      "\n\n" .
+      "These credentials will expire in " . TOKEN_EXPIRATION . " hours\n.";
+    SendSMTPMail($titleUserEmail,
+      $bodyUserEmail,
+      $form_state['values']['email'],
+      XCHANGE_EMAIL,
+      XCHANGESUPPORT_EMAIL);
+
+    // send xchange a notification regarding the account creation
+    $titleXchangeEmail = "Xchange account request by " . $form_state['values']['email'] . ": automatic processing notification. Company: BROADSOFT";
+    $bodyXchangeEmail = "A BROADSOFT employee has requested an Xchange account from the Xchange web site and has been granted access to Xchange. User is: " . $form_state['values']['email'];
+    SendSMTPMail($titleXchangeEmail,
+      "See Account Request History at: http://xchange.broadsoft.com/php/xchange/account_request_history/all \n\n" . $bodyXchangeEmail . "\n\n",
+      XCHANGE_EMAIL,
+      "", // no cc
+      DEV_EMAIL);
+    $msg = 'Success, Xchange Account Created - Employee, case Z';
+    broadsoft_account_request_AddAccountRequestEntry($form_state['values']['email'], 'Z', $msg, $form_state['values']);
+
+    $redirectPage = XCHANGE_BASE_URL . "/account_request/EmailSent";
+    return $redirectPage;
+  }
+
+  // ----------------------------- vvvvvvvvvvvv Go on for non-BSoft employees vvvvvvvvvvvv -----------------------------------
+  try {
+    $gUserData = MakeSFDCCompatibleUserData($form_state);
+    $gSFDCMatchedAccounts = $mySFDCClient->FetchDataFromSFDC($user_domain,
+      $form_state['values']['Country'],
+      $gUserData,             // will enhance gUserData if match found on SFDC
+      $gSFDCValidNDA,           // returned value
+      $gSFDCValidLICENSE,         // returned value
+      $gSFDCAccountIsActiveOrJeopardy,  // returned value
+      $gSFDCAccountNb,          // returned value
+      $gSFDCCompanyXchangeAccessLevel,  // returned value
+      $retRawData);
+
+    // slip-through for testing, so as not to flood xchange@broadsoft.com with test data
+    // tipycally:
+    // First name -> __xchange__tester__
+    // Last name  -> slapierre@broadsoft.com (you, the tester)
+    // Email      -> real user email (e.g. test1@ericsson.com)
+    if ($gUserData['Lead']['FirstName'] == '__xchange__tester__') {
+      $emailRedirect = $gUserData['Lead']['LastName'];
+      $gUserData['Lead']['Email'] = $emailRedirect;
+      $gUserData['Contact']['Email'] = $emailRedirect;
+      if (!defined('XCHANGE_EMAIL')) {
+        define("XCHANGE_EMAIL", $emailRedirect);
+      }
+    }
+
+    $NDAorLIC_NOgood = !($gSFDCValidNDA || $gSFDCValidLICENSE);
+    $debugInfo = array();
+    $debugInfo['NDA is valid'] = $gSFDCValidNDA ? 'true' : 'false';
+    $debugInfo['LICENSE is valid'] = $gSFDCValidLICENSE ? 'true' : 'false';
+
+    $fullUserName = $gUserData['Lead']['FirstName'] . " " . $gUserData['Lead']['LastName'];
+    DebugPrint(__LINE__, "User name is: " . $fullUserName);
+    DebugPrint(__LINE__, "ValidNDA = " . ($gSFDCValidNDA ? "true" : "false"));
+    DebugPrint(__LINE__, "ValidLicense = " . ($gSFDCValidLICENSE ? "true" : "false"));
+
+    if ($gSFDCMatchedAccounts == 0) {
+      // case A (flow chart) -------------------------------------------------------------------------------------
+      $whichCase = "Case A: Email domain not found";
+      broadsoft_account_request_AddAccountRequestEntry($gUserData['Lead']['Email'], 'A', 'No Account Matched', array_merge($debugInfo, $gUserData['Lead']));
+      DebugPrint(__LINE__, "CASE A");
+      $titleXchangeEmail = "Xchange account request: manual intervention required. Company:" . $gUserData['Lead']['Company'];
+      //@@@ Add2Log($titleXchangeEmail."\n--case A--\nUser data:\n".Array2Str2($gUserData['Lead']));
+
+      if ($mySFDCClient->CreateEntry($gUserData['Lead'], 'Lead')) {
+        $bodyXchangeEmail = "A user has requested an Xchange account from the Xchange web site. His profile doesn't match an account on SFDC.\nA Lead has been created in SFDC for this user.\n\nThe company's Xchange access level is: " . $gSFDCCompanyXchangeAccessLevel . "\n\nHere is the user's data:";
+      }
+      else {
+        $bodyXchangeEmail = "A user has requested an Xchange account from the Xchange web site. His profile doesn't match an account on SFDC.\nA Lead creation FAILED on SFDC for this user.\n\nThe company's Xchange access level is: " . $gSFDCCompanyXchangeAccessLevel . "\n\nHere is the user's data:";
+      }
+      SendSMTPMail($titleXchangeEmail,
+        "See Account Request History at: http://xchange.broadsoft.com/php/xchange/account_request_history/all \n\n" . $bodyXchangeEmail . "\n\n" . Array2Str2($gUserData['Lead']) . "- AccountNumber: " . $gSFDCAccountNb . "\n\n(" . $whichCase . ")",
+        XCHANGE_EMAIL,
+        "", // no cc
+        DEV_EMAIL);
+    }
+    elseif ($gSFDCMatchedAccounts > 1) {
+      // case E (flow chart) -------------------------------------------------------------------------------------
+      $whichCase = "Case E: Multiple domain results";
+      broadsoft_account_request_AddAccountRequestEntry($gUserData['Lead']['Email'], 'E', 'Multiple Accounts Matched', array_merge($debugInfo, $gUserData['Lead']));
+      DebugPrint(__LINE__, "CASE E");
+      $titleXchangeEmail = "Xchange account request: manual intervention required. Company:" . $gUserData['Lead']['Company'];
+      //@@@ Add2Log($titleXchangeEmail."\n--case E--\nUser data:\n".Array2Str2($gUserData['Lead']));
+      if ($mySFDCClient->CreateEntry($gUserData['Lead'], 'Lead')) {
+        $bodyXchangeEmail = "A user has requested an Xchange account from the Xchange web site. His email domain matches multiple accounts on SFDC.\n\nHere are the matches:\n\n" . $gSFDCMatchedAccounts . "\nA Lead has been created in SFDC for this user.\n\nHere is the user's data:";
+      }
+      else {
+        $bodyXchangeEmail = "A user has requested an Xchange account from the Xchange web site. His email domain matches multiple accounts on SFDC.\n\nHere are the matches:\n\n" . $gSFDCMatchedAccounts . "\nA Lead creation FAILED on SFDC for this user.\n\nTHere is the user's data:";
+      }
+      SendSMTPMail($titleXchangeEmail,
+        "See Account Request History at: http://xchange.broadsoft.com/php/xchange/account_request_history/all \n\n" . $bodyXchangeEmail . "\n\n" . Array2Str2($gUserData['Lead']) . "\n",
+        XCHANGE_EMAIL,
+        "", // no cc
+        DEV_EMAIL);
+    }
+    elseif ($NDAorLIC_NOgood) {
+      // to come here, needs:
+      //      an INvalid license
+      //      AND
+      //      an INvalid OR an (almost)expired NDA
+      // case B (flow chart) -------------------------------------------------------------------------------------
+      $whichCase = "Case B: NDA or license agreement missing";
+      broadsoft_account_request_AddAccountRequestEntry($gUserData['Lead']['Email'], 'B', 'NDA Invalid or Expired', array_merge($debugInfo, $gUserData['Lead']));
+      DebugPrint(__LINE__, "CASE B");
+      $titleXchangeEmail = "Xchange account request: manual intervention required. Company:" . $gUserData['Lead']['Company'];
+      //@@@ Add2Log($titleXchangeEmail."\n--case B--\nUser data:\n".Array2Str2($gUserData['Lead'])."- AccountNumber: ".$gSFDCAccountNb);
+      if ($mySFDCClient->CreateEntry($gUserData['Lead'], 'Lead')) {
+        $bodyXchangeEmail = "A user has requested an Xchange account from the Xchange web site. His profile matches an account on SFDC but the associated NDA is invalid or (almost) expired.\nA Lead has been created in SFDC for this user.\nNDA forms have been sent the the user.\n\nThe company's Xchange access level is: " . $gSFDCCompanyXchangeAccessLevel . "\n\nHere is the user's data:";
+      }
+      else {
+        $bodyXchangeEmail = "A user has requested an Xchange account from the Xchange web site. His profile matches an account on SFDC but the associated NDA is invalid or (almost) expired.\nA Lead creation FAILED on SFDC for this user.\nNDA forms have been sent the the user.\n\nThe company's Xchange access level is: " . $gSFDCCompanyXchangeAccessLevel . "\n\nHere is the user's data:";
+      }
+      SendSMTPMail($titleXchangeEmail,
+        "See Account Request History at: http://xchange.broadsoft.com/php/xchange/account_request_history/all \n\n" . $bodyXchangeEmail . "\n\n" . Array2Str2($gUserData['Lead']) . "- AccountNumber: " . $gSFDCAccountNb . "\n\n(" . $whichCase . ")",
+        XCHANGE_EMAIL,
+        "", // no cc
+        DEV_EMAIL);
+
+      $titleUserEmail = "Xchange NDA Expired or Not on File";
+      $bodyUserEmail = "Dear " . $fullUserName . ",\n\n"
+        . "Thank you for requesting a BroadSoft Xchange account. In order to activate your Xchange account, your company is required to have a current non-disclosure agreement (NDA) on file with BroadSoft.  Currently we are unable to process your request because your company's NDA agreement is either about to expire or we cannot locate it on file.\n\n"
+        . "Please have a representative from your organization sign and return the attached NDA and email a scanned copy to xchange@broadsoft.com once complete.  Once this is complete, we will process your request for a BroadSoft Xchange account within two business days.\n\n"
+        . "Do not hesitate to email xchange@broadsoft.com or contact your BroadSoft Account Representative with any questions or concerns.\n\n"
+        . "Regards,\n\n"
+        . "Xchange Support\n"
+        . "xchange@broadsoft.com\n";
+      SendEmailWithAttachment2($titleUserEmail,
+        $bodyUserEmail,
+        $gUserData['Lead']['Email'],
+        XCHANGE_EMAIL,
+        NDA_FILE);
+    }
+    elseif (!$gSFDCAccountIsActiveOrJeopardy) {
+      // case C (flow chart) -------------------------------------------------------------------------------------
+      $whichCase = "Case C: Account not active or in jeopardy";
+      broadsoft_account_request_AddAccountRequestEntry($gUserData['Lead']['Email'], 'C', 'Account Inactive', array_merge($debugInfo, $gUserData['Lead']));
+      DebugPrint(__LINE__, "CASE C");
+      $titleXchangeEmail = "Xchange account request: manual intervention required. Company:" . $gUserData['Lead']['Company'];
+      //@@@ Add2Log($titleXchangeEmail."\n--case C--\nUser data:\n".Array2Str2($gUserData['Lead'])."- AccountNumber: ".$gSFDCAccountNb);
+      if ($mySFDCClient->CreateEntry($gUserData['Lead'], 'Lead')) {
+        $bodyXchangeEmail = "A user has requested an Xchange account from the Xchange web site. His profile matches an account on SFDC but the account's status is not active.\nA Lead has been created in SFDC for this user.\n\nThe company's Xchange access level is: " . $gSFDCCompanyXchangeAccessLevel . "\n\nHere is the user's data:";
+      }
+      else {
+        $bodyXchangeEmail = "A user has requested an Xchange account from the Xchange web site. His profile matches an account on SFDC but the account's status is not active.\nA Lead creation FAILED on SFDC for this user.\n\nThe company's Xchange access level is: " . $gSFDCCompanyXchangeAccessLevel . "\n\nHere is the user's data:";
+      }
+      SendSMTPMail($titleXchangeEmail,
+        "See Account Request History at: http://xchange.broadsoft.com/php/xchange/account_request_history/all \n\n" . $bodyXchangeEmail . "\n\n" . Array2Str2($gUserData['Lead']) . "- AccountNumber: " . $gSFDCAccountNb . "\n\n(" . $whichCase . ")",
+        XCHANGE_EMAIL,
+        "", // no cc
+        DEV_EMAIL);
+
+      $titleUserEmail = "Xchange Account Status is Under Review";
+      $bodyUserEmail = "Dear " . $fullUserName . ",\n\n"
+        . "Thank you for requesting a BroadSoft Xchange account. In order to activate your Xchange account we must have your company's credentials and payments up-to-date.  Due to your company's status your account is currently under review at this time.  Please contact your BroadSoft Account Representative to find out more information on this matter..\n\n"
+        . "Regards,\n\n"
+        . "Xchange Support\n"
+        . "xchange@broadsoft.com\n";
+      SendSMTPMail($titleUserEmail,
+        $bodyUserEmail,
+        $gUserData['Lead']['Email'],
+        XCHANGE_EMAIL,
+        XCHANGESUPPORT_EMAIL);
+    }
+    else {
+      // case D (flow chart) -------------------------------------------------------------------------------------
+      $whichCase = "Case D: Successful";
+      DebugPrint(__LINE__, "CASE D");
+      $msg = 'Success, Xchange Account Created';
+      if ($retRawData->size > 1) {
+        $msg .= ' (WAS ' . $retRawData->size . ')';
+      }
+      broadsoft_account_request_AddAccountRequestEntry($gUserData['Lead']['Email'], 'D', $msg, array_merge($debugInfo, $gUserData['Lead']));
+      // create account in xchange
+      $UserRid = $mySFDCClient->MapSFDCAccessLevel2XchangeRID($gSFDCCompanyXchangeAccessLevel);
+
+      // remove any previous tokens associated to that email, so no duplicate
+      db_query("DELETE FROM {account_tmp_info} WHERE email = '%s'", $form_state['values']['email']);
+
+      // generate token
+      $token = substr(str_shuffle("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_"), 0, 40); // '#!%@' breaks something
+      DebugPrint(__LINE__, "Account Creation, Token generated = " . $token . " for user " . $form_state['values']['email']);
+
+      db_query("INSERT INTO {account_tmp_info} (token, email, first_name, last_name, company, title, location, rid) VALUES ('%s', '%s', '%s', '%s', '%s', '%s', '%s', '%s')",
+        $token,
+        $form_state['values']['email'],
+        $form_state['values']['first_name'],
+        $form_state['values']['last_name'],
+        $form_state['values']['company'],
+        $form_state['values']['title'],
+        $form_state['values']['city'] . ", " . $form_state['values']['state_prov'] . ", " . $form_state['values']['Country'],
+        $UserRid);
+
+      // send credentials to user
+      $titleUserEmail = "Your BroadSoft Xchange account activation credentials";
+      $bodyUserEmail = "" .
+        "A BroadSoft Xchange account has been requested using your email address: " . $gUserData['Contact']['Email'] . ".\n" .
+        "\n" .
+        "If this was not you, you may safely do nothing.\n" .
+        "\n" .
+        "If you wish to proceed and activate your Xchange account, please visit this address:\n" .
+        XCHANGE_BASE_URL . "/account_request/SetPasswordForm" .
+        //............ all info to be passed to client when validating account ..............
+        "?token=" . $token .
+        "&first=" . $gUserData['Contact']['FirstName'] .
+        "&last=" . $gUserData['Contact']['LastName'] .
+        //...................................................................................
+        "\n\n" .
+        "These credentials will expire in " . TOKEN_EXPIRATION . " hours\n.";
+      SendSMTPMail($titleUserEmail,
+        $bodyUserEmail,
+        $gUserData['Contact']['Email'],
+        XCHANGE_EMAIL,
+        XCHANGESUPPORT_EMAIL);
+
+      // send xchange a notification regarding the account creation
+      $titleXchangeEmail = "Xchange account request: automatic processing notification. Company: " . $gUserData['Lead']['Company'];
+      //@@@ Add2Log($titleXchangeEmail."\n--case D--\nUser data:\n".Array2Str2($gUserData['Contact'])."- AccountNumber: ".$gSFDCAccountNb);
+      if ($mySFDCClient->CreateEntry($gUserData['Contact'], 'Contact', TRUE)) {
+        $bodyXchangeEmail = "A user has requested an Xchange account from the Xchange web site and has been granted access to Xchange. His profile matches a valid account on SFDC.\nA Contact has been created in SFDC for this user.\n\nThe company's Xchange access level is: " . $gSFDCCompanyXchangeAccessLevel . "\n\nFYI only, here is the user's data:";
+      }
+      else {
+        $bodyXchangeEmail = "A user has requested an Xchange account from the Xchange web site and has been granted access to Xchange. His profile matches a valid account on SFDC.\nA Contact creation FAILED on SFDC for this user.\n\nThe company's Xchange access level is: " . $gSFDCCompanyXchangeAccessLevel . "\n\nFYI only, here is the user's data:";
+      }
+      SendSMTPMail($titleXchangeEmail,
+        "See Account Request History at: http://xchange.broadsoft.com/php/xchange/account_request_history/all \n\n" . $bodyXchangeEmail . "\n\n" . Array2Str2($gUserData['Contact']) . "- AccountNumber: " . $gSFDCAccountNb . "\n\n(" . $whichCase . ")",
+        XCHANGE_EMAIL,
+        "", // no cc
+        DEV_EMAIL);
+
+      $redirectPage = XCHANGE_BASE_URL . "/account_request/EmailSent";
+
+      // XXX EMS Enabled
+      // We still need to intervene manually but the user is created first.
+      if ($gUserData['Lead']['Requesting_an_EMS_Account__c'] == 'Yes') {
+        // case F (flow chart) -------------------------------------------------------------------------------------
+        $whichCase = "Case F: EMS requested";
+        broadsoft_account_request_AddAccountRequestEntry($gUserData['Lead']['Email'], 'F', 'EMS Account Requested', array_merge($debugInfo, $gUserData['Lead']));
+        DebugPrint(__LINE__, "CASE F");
+        $titleXchangeEmail = "Xchange account request (EMS requested): manual intervention required. Company:" . $gUserData['Lead']['Company'];
+        //@@@ Add2Log($titleXchangeEmail."\n--case F--\nUser data:\n".Array2Str2($gUserData['Lead']));
+        SendSMTPMail($titleXchangeEmail,
+          "See Account Request History at: http://xchange.broadsoft.com/php/xchange/account_request_history/all \n\n" . $bodyXchangeEmail . "\n\n" . Array2Str2($gUserData['Lead']) . "\n",
+          XCHANGE_EMAIL,
+          "", // no cc
+          DEV_EMAIL);
+      }
+    }
+  } catch (Exception $e) {
+    DebugPrint(__LINE__, "Exception occured!");
+    DebugPrint(__LINE__, var_export($e));
+  }
+
+  return $redirectPage;
+}
+
+
+/** =======================================================================
+ **/
+function GetDeltaDaysFromNow($aDate) {
+  $NULL_DATE = 0;
+
+  if ($aDate == $NULL_DATE) {
+    DebugPrint(__LINE__, "Date is NULL_DATE");
+    return 0;
+  }
+
+  $aDateArr = explode("-", $aDate);
+  if ($aDateArr[0] > "2038") { // unix 32-bit limit of 2038
+    // short-term solution, should be fixed by then right?
+    $aDateArr[0] = "2037";
+    DebugPrint(__LINE__, "Date is beyond 2038, setting it to 2037");
+  }
+
+  $aDateInt = mktime(0, 0, 0, $aDateArr[1], $aDateArr[2], $aDateArr[0]);
+  return (($aDateInt - time()) / (60 * 60 * 24)); // time() yields now
+}
+
+
+/** =======================================================================
+ * @ref http://api.drupal.org/api/function/drupal_mail
+ **/
+function SendEmail($subject, $body, $to, $cc, $bcc) {
+  // apparently this is not the purest way to send an email in Drupal, see ref above
+  $message = array(
+    'to' => $to,
+    'subject' => t($subject),
+    'body' => t($body),
+    'headers' => array('From' => XCHANGE_EMAIL),
+  );
+
+  if (!empty($cc)) {
+    $message['headers']['Cc'] = $cc;
+  }
+
+  if (!empty($bcc)) {
+    $message['headers']['Bcc'] = $bcc;
+  }
+
+  drupal_mail('', '', $message);
+}
+
+/**
+ * Send an email using PHPMailer through a gmail inbox to prevent email being flagged as spam
+ *
+ * @param string $subject
+ * @param string $body
+ * @param string $to
+ * @param string $cc
+ * @param string $bcc
+ */
+function SendSMTPMail($subject, $body, $to, $cc, $bcc, $file = NULL, $multipart = FALSE) {
+  $mail = new PHPMailer;
+  $mail->isSMTP();
+  $mail->SMTPAuth = TRUE;
+  $mail->SMTPSecure = 'tls';
+  $mail->setFrom(XCHANGE_EMAIL, variable_get('broadsoft_gmail_smtp_fromname', 'BroadSoft Xchange'));
+  $mail->Host = variable_get('broadsoft_gmail_smtp_host', 'smtp.gmail.com');
+  $mail->Port = variable_get('broadsoft_gmail_smtp_port', 587);
+  $mail->Username = variable_get('broadsoft_gmail_smtp_username', 'xchange@broadsoft.com');
+  $mail->Password = variable_get('broadsoft_gmail_smtp_password', 'xChAng3!');
+  $mail->Subject = $subject;
+  $mail->Body = $body;
+  $mail->IsHTML(isHtml($body));
+
+  $to = explode(',', $to);
+  foreach ($to as $temp) {
+    $mail->addAddress($temp);
+  }
+  if (!empty($cc)) {
+    $cc = explode(',', $cc);
+    foreach ($cc as $temp) {
+      $mail->addCC($temp);
+    }
+  }
+  if (!empty($bcc)) {
+    $bcc = explode(',', $bcc);
+    foreach ($bcc as $temp) {
+      $mail->addBCC($temp);
+    }
+  }
+  if (!empty($file)) {
+    if ($multipart) {
+      $mail->AltBody = $body; //alt body defines the creation of a multipart
+      $mail->addAttachment($file);
+    }
+    else {
+      $mail->addAttachment($file);
+    }
+  }
+  $mail->send();
+}
+
+/* ======================================================================= */
+function SendEmailWithAttachment2($subject, $body, $rcpt, $cc, $fileName) {
+  if (!empty($cc)) {
+    $headers['Cc'] = $cc;
+  }
+  $message = nl2br($body);
+  $params = array(
+    'headers' => $headers,
+    'message' => $message,
+    'subject' => $subject,
+    'attachments' => array(
+      drupal_realpath($fileName),
+    )
+  );
+  $ret = drupal_mail('broadsoft_account_request', 'broadsoft_attachment', $rcpt, $GLOBALS['language'], $params);
+
+  DebugPrint(__LINE__, TRUE, "Sent email with attachment to: " . $rcpt . " (cc: " . $cc . ") - return value is " . print_r($ret, true));
+
+  return $ret;
+}
+
+
+/** =======================================================================
+ **/
+function SendEmailWithAttachment($subject, $body, $to, $cc, $bcc, $fileName) {
+  // apparently this is not the purest way to send an email in Drupal, see ref above
+  $message = array(
+    'to' => $to,
+    'subject' => t($subject),
+//    'body'  => t($body),
+    'headers' => array('From' => XCHANGE_EMAIL),
+  );
+
+  if (!empty($cc)) {
+    $message['headers']['Cc'] = $cc;
+  }
+
+  if (!empty($bcc)) {
+    $message['headers']['Bcc'] = $bcc;
+  }
+
+  $bound_text = md5(uniqid(time()));
+  $bound = "--" . $bound_text . "\r\n";
+  $bound_last = "--" . $bound_text . "--\r\n";
+
+  $message['headers']['MIME-Version'] = '1.0'; //@@@ test me
+  $message['headers']['Content-Type'] = 'multipart/mixed; boundary=\"$bound_text\"'; //@@@ test me
+
+  $message['body'] =
+    "If you can see this MIME than your client doesn't accept MIME types!\r\n"
+    . $bound
+    . "Content-Type: text/plain; charset=us-ascii\"\r\n"
+    . "Content-Transfer-Encoding: 7bit\r\n\r\n"
+    . $body
+    . "\r\n"
+    . $bound;
+
+
+  $message['body'] .=
+    "Content-Type: application/msword; name=\"" . $fileName . "\"\r\n"
+    . "Content-Transfer-Encoding: base64\r\n"
+    . "Content-disposition: attachment; file=\"" . $fileName . "\"\r\n"
+    . "\r\n"
+    . chunk_split(base64_encode(file_get_contents($fileName)))
+    . $bound_last;
+
+  drupal_mail_send($message);
+}
+
+
+/** =======================================================================
+ **/
+function Array2Str2($udata = array(), $prefix = "") {
+  $output = "";
+  foreach ($udata as $key => $val) {
+    $output .= $prefix . " - " . $key . " : " . $val . "\n";
+  }
+  return $output;
+}
+
+
+/** =======================================================================
+ **/
+function MakeSFDCCompatibleUserData(&$form_state) {
+  $tmp_user_data['Lead']['FirstName'] = $form_state['values']['first_name'];
+  $tmp_user_data['Contact']['FirstName'] = $form_state['values']['first_name'];
+
+  $tmp_user_data['Lead']['LastName'] = $form_state['values']['last_name'];
+  $tmp_user_data['Contact']['LastName'] = $form_state['values']['last_name'];
+
+//  $tmp_user_data['Lead']['Title'] = $form_state['values']['title'];
+//  $tmp_user_data['Contact']['Title'] = $form_state['values']['title'];
+//
+//  $tmp_user_data['Lead']['Company'] = $form_state['values']['company'];
+//
+  $tmp_user_data['Lead']['Email'] = $form_state['values']['email'];
+  $tmp_user_data['Contact']['Email'] = $form_state['values']['email'];
+
+//  $tmp_user_data['Lead']['Phone'] = $form_state['values']['phone'];
+//  $tmp_user_data['Contact']['Phone'] = $form_state['values']['phone'];
+//
+//  $tmp_user_data['Lead']['MobilePhone'] = $form_state['values']['mobile'];
+//  $tmp_user_data['Contact']['MobilePhone'] = $form_state['values']['mobile'];
+//
+//  $tmp_user_data['Lead']['City'] = $form_state['values']['city'];
+//  $tmp_user_data['Contact']['MailingCity'] = $form_state['values']['city'];
+//
+//  $tmp_user_data['Lead']['Street'] = $form_state['values']['address'];
+//  $tmp_user_data['Contact']['MailingStreet'] = $form_state['values']['address'];
+//
+//  $tmp_user_data['Lead']['PostalCode'] = $form_state['values']['zip_postal_code'];
+//  $tmp_user_data['Contact']['MailingPostalCode'] = $form_state['values']['zip_postal_code'];
+//
+  $tmp_user_data['Lead']['Country'] = $form_state['values']['Country'];
+  $tmp_user_data['Contact']['MailingCountry'] = $form_state['values']['Country'];
+
+//  $tmp_user_data['Lead']['State'] = $form_state['values']['state_prov'];
+//  $tmp_user_data['Contact']['MailingState'] = $form_state['values']['state_prov'];
+
+//  $tmp_user_data['Lead']['BroadSoft_Account_Manager__c'] = $form_state['values']['account_manager'];
+
+//  $tmp_user_data['Lead']['Relationship_with_BroadSoft__c'] = $form_state['values']['relationship'];
+
+//  $tmp_user_data['Lead']['Requesting_an_EMS_Account__c'] = $form_state['values']['requesting_EMS'];
+
+//  if ($tmp_user_data['Requesting_an_EMS_Account__c'] == 'Yes') {
+//    $tmp_user_data['Lead']['If_yes_Alt_Company_Email_Address__c'] = $form_state['values']['EMS_account_email'];
+//    $tmp_user_data['Contact']['If_yes_Alt_Company_Email_Address__c'] = $form_state['values']['first_name'];
+//  }
+
+  // add some extra fields
+  $tmp_user_data['Lead']['RecordTypeID'] = '012700000001T61';
+
+  return $tmp_user_data;
+}
+
+
+/** =======================================================================
+ * @param none
+@return form elements (array)
+ * @see http://api.drupal.org/api/drupal/developer--topics--forms_api_reference.html
+ **/
+function broadsoft_set_password_form() {
+  // extract info from url
+  $pattern = '/\/.*\//'; // must be in same format as regular sed, i.e. between / and /
+  $token = preg_replace($pattern, '', url($_GET['token'])); //@@@ NOT always good... ? seems to take last value, no refresh... ?
+  DebugPrint(__LINE__, "Displaying account activation with tok=" . $token);
+
+  $form = array();
+  $form['#attributes'] = array('name' => 'set password');
+  $form['#validate'][] = 'broadsoft_set_password_validate';
+  $form['#submit'][] = 'broadsoft_set_password_submit';
+
+  $form['email'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Email'),
+    '#size' => 40,
+    '#maxlength' => 256,
+    '#required' => TRUE,
+  );
+  $form['token'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Token'),
+    '#size' => 100,
+    '#maxlength' => 100,
+    '#default_value' => $token,
+    '#required' => TRUE,
+  );
+  $form['username'] = array(
+    '#type' => 'textfield',
+    '#title' => t('User Name'),
+    '#description' => t('This is the id other users will see when you post questions or answers. It must contain only alphanumeric characters or underscores.'),
+    '#size' => 100,
+    '#maxlength' => 100,
+    '#required' => TRUE,
+  );
+  $form['pass'] = array(
+    '#type' => 'password',
+    '#maxlength' => 64,
+    '#size' => 15,
+    '#required' => TRUE,
+  );
+  $form['pass'] = array(
+    '#type' => 'password_confirm',
+    '#size' => 15,
+    '#required' => TRUE,
+  );
+  $form['submit_button'] = array(
+    '#prefix' => '<div id="edit-button-container">',
+    '#type' => 'submit',
+    '#value' => t('Submit'),
+    '#suffix' => '</div>',
+  );
+  return $form;
+}
+
+
+/** =======================================================================
+ * Returns the account request form seen by anon user
+ * @param none
+@return form elements (array)
+ * @see http://api.drupal.org/api/drupal/developer--topics--forms_api_reference.html
+ **/
+function broadsoft_account_request_form() {
+  $form = array();
+  $form['#attributes'] = array('name' => 'account request');
+  $form['#validate'][] = 'broadsoft_account_request_validate';
+  $form['#submit'][] = 'broadsoft_account_request_submit';
+
+  $variables = array();
+  if (isset($_GET['wid'])) {
+    $result = db_query("select variables from watchdog where wid=" . $_GET['wid']);
+    if ($row = db_fetch_array($result)) {
+      $variables = unserialize($row['variables']);
+    }
+  }
+
+  $form['first_name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('First Name'),
+    '#size' => 40,
+    '#maxlength' => 256,
+    '#required' => TRUE,
+  );
+  $form['last_name'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Last Name'),
+    '#size' => 40,
+    '#maxlength' => 256,
+    '#required' => TRUE,
+  );
+//  $form['company'] = array(
+//    '#type' => 'textfield',
+//    '#title' => t('Company'),
+//    '#size' => 40,
+//    '#maxlength' => 256,
+//    '#required' => TRUE,
+//  );
+//  $form['title'] = array(
+//    '#type' => 'textfield',
+//    '#title' => t('Title'),
+//    '#size' => 40,
+//    '#maxlength' => 256,
+//    '#required' => TRUE,
+//  );
+  $form['email'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Email'),
+    '#size' => 40,
+    '#maxlength' => 256,
+    '#required' => TRUE,
+  );
+//  $form['phone'] = array(
+//    '#type' => 'textfield',
+//    '#title' => t('Phone'),
+//    '#size' => 40,
+//    '#maxlength' => 256,
+//    '#required' => TRUE,
+//  );
+//  $form['mobile'] = array(
+//    '#type' => 'textfield',
+//    '#title' => t('Mobile'),
+//    '#size' => 40,
+//    '#maxlength' => 256,
+//    '#required' => FALSE,
+//  );
+//  $form['address'] = array(
+//    '#type' => 'textarea',
+//    '#title' => t('Address'),
+//    '#cols' => 40,
+//    '#rows' => 6,
+//    '#maxlength' => 256,
+//    '#required' => TRUE,
+//  );
+//  $form['city'] = array(
+//    '#type' => 'textfield',
+//    '#title' => t('City'),
+//    '#size' => 40,
+//    '#maxlength' => 256,
+//    '#required' => TRUE,
+//  );
+//  $form['state_prov'] = array(
+//    '#type' => 'textfield',
+//    '#title' => t('State/Province'),
+//    '#size' => 40,
+//    '#maxlength' => 256,
+//    '#required' => TRUE,
+//  );
+  $form['Country'] = array(
+    '#type' => 'select',
+    '#title' => t('Country'),
+    '#options' => array(
+      'AF' => t('AFGHANISTAN'),
+      'AX' => t('ALAND ISLANDS'),
+      'AL' => t('ALBANIA'),
+      'DZ' => t('ALGERIA'),
+      'AS' => t('AMERICAN SAMOA'),
+      'AD' => t('ANDORRA'),
+      'AO' => t('ANGOLA'),
+      'AI' => t('ANGUILLA'),
+      'AQ' => t('ANTARCTICA'),
+      'AG' => t('ANTIGUA AND BARBUDA'),
+      'AR' => t('ARGENTINA'),
+      'AM' => t('ARMENIA'),
+      'AW' => t('ARUBA'),
+      'AU' => t('AUSTRALIA'),
+      'AT' => t('AUSTRIA'),
+      'AZ' => t('AZERBAIJAN'),
+      'BS' => t('BAHAMAS'),
+      'BH' => t('BAHRAIN'),
+      'BD' => t('BANGLADESH'),
+      'BB' => t('BARBADOS'),
+      'BY' => t('BELARUS'),
+      'BE' => t('BELGIUM'),
+      'BZ' => t('BELIZE'),
+      'BJ' => t('BENIN'),
+      'BM' => t('BERMUDA'),
+      'BT' => t('BHUTAN'),
+      'BO' => t('BOLIVIA, PLURINATIONAL STATE OF'),
+      'BQ' => t('BONAIRE, SAINT EUSTATIUS AND SABA'),
+      'BA' => t('BOSNIA AND HERZEGOVINA'),
+      'BW' => t('BOTSWANA'),
+      'BV' => t('BOUVET ISLAND'),
+      'BR' => t('BRAZIL'),
+      'IO' => t('BRITISH INDIAN OCEAN TERRITORY'),
+      'BN' => t('BRUNEI DARUSSALAM'),
+      'BG' => t('BULGARIA'),
+      'BF' => t('BURKINA FASO'),
+      'BI' => t('BURUNDI'),
+      'KH' => t('CAMBODIA'),
+      'CM' => t('CAMEROON'),
+      'CA' => t('CANADA'),
+      'CV' => t('CAPE VERDE'),
+      'KY' => t('CAYMAN ISLANDS'),
+      'CF' => t('CENTRAL AFRICAN REPUBLIC'),
+      'TD' => t('CHAD'),
+      'CL' => t('CHILE'),
+      'CN' => t('CHINA'),
+      'CX' => t('CHRISTMAS ISLAND'),
+      'CC' => t('COCOS (KEELING) ISLANDS'),
+      'CO' => t('COLOMBIA'),
+      'KM' => t('COMOROS'),
+      'CG' => t('CONGO'),
+      'CD' => t('CONGO, THE DEMOCRATIC REPUBLIC OF THE'),
+      'CK' => t('COOK ISLANDS'),
+      'CR' => t('COSTA RICA'),
+      'CI' => t('COTE D\'IVOIRE'),
+      'HR' => t('CROATIA'),
+      'CU' => t('CUBA'),
+      'CW' => t('CURACAO'),
+      'CY' => t('CYPRUS'),
+      'CZ' => t('CZECH REPUBLIC'),
+      'DK' => t('DENMARK'),
+      'DJ' => t('DJIBOUTI'),
+      'DM' => t('DOMINICA'),
+      'DO' => t('DOMINICAN REPUBLIC'),
+      'EC' => t('ECUADOR'),
+      'EG' => t('EGYPT'),
+      'SV' => t('EL SALVADOR'),
+      'GQ' => t('EQUATORIAL GUINEA'),
+      'ER' => t('ERITREA'),
+      'EE' => t('ESTONIA'),
+      'ET' => t('ETHIOPIA'),
+      'FK' => t('FALKLAND ISLANDS (MALVINAS)'),
+      'FO' => t('FAROE ISLANDS'),
+      'FJ' => t('FIJI'),
+      'FI' => t('FINLAND'),
+      'FR' => t('FRANCE'),
+      'GF' => t('FRENCH GUIANA'),
+      'PF' => t('FRENCH POLYNESIA'),
+      'TF' => t('FRENCH SOUTHERN TERRITORIES'),
+      'GA' => t('GABON'),
+      'GM' => t('GAMBIA'),
+      'GE' => t('GEORGIA'),
+      'DE' => t('GERMANY'),
+      'GH' => t('GHANA'),
+      'GI' => t('GIBRALTAR'),
+      'GR' => t('GREECE'),
+      'GL' => t('GREENLAND'),
+      'GD' => t('GRENADA'),
+      'GP' => t('GUADELOUPE'),
+      'GU' => t('GUAM'),
+      'GT' => t('GUATEMALA'),
+      'GG' => t('GUERNSEY'),
+      'GN' => t('GUINEA'),
+      'GW' => t('GUINEA-BISSAU'),
+      'GY' => t('GUYANA'),
+      'HT' => t('HAITI'),
+      'HM' => t('HEARD ISLAND AND MCDONALD ISLANDS'),
+      'HN' => t('HONDURAS'),
+      'HK' => t('HONG KONG'),
+      'HU' => t('HUNGARY'),
+      'IS' => t('ICELAND'),
+      'IN' => t('INDIA'),
+      'ID' => t('INDONESIA'),
+      'IR' => t('IRAN, ISLAMIC REPUBLIC OF'),
+      'IQ' => t('IRAQ'),
+      'IE' => t('IRELAND'),
+      'IM' => t('ISLE OF MAN'),
+      'IL' => t('ISRAEL'),
+      'IT' => t('ITALY'),
+      'JM' => t('JAMAICA'),
+      'JP' => t('JAPAN'),
+      'JE' => t('JERSEY'),
+      'JO' => t('JORDAN'),
+      'KZ' => t('KAZAKHSTAN'),
+      'KE' => t('KENYA'),
+      'KI' => t('KIRIBATI'),
+      'KP' => t('KOREA, DEMOCRATIC PEOPLE\'S REPUBLIC OF'),
+      'KR' => t('KOREA, REPUBLIC OF'),
+      'KW' => t('KUWAIT'),
+      'KG' => t('KYRGYZSTAN'),
+      'LA' => t('LAO PEOPLE\'S DEMOCRATIC REPUBLIC'),
+      'LV' => t('LATVIA'),
+      'LB' => t('LEBANON'),
+      'LS' => t('LESOTHO'),
+      'LR' => t('LIBERIA'),
+      'LY' => t('LIBYAN ARAB JAMAHIRIYA'),
+      'LI' => t('LIECHTENSTEIN'),
+      'LT' => t('LITHUANIA'),
+      'LU' => t('LUXEMBOURG'),
+      'MO' => t('MACAO'),
+      'MK' => t('MACEDONIA, THE FORMER YUGOSLAV REPUBLIC OF'),
+      'MG' => t('MADAGASCAR'),
+      'MW' => t('MALAWI'),
+      'MY' => t('MALAYSIA'),
+      'MV' => t('MALDIVES'),
+      'ML' => t('MALI'),
+      'MT' => t('MALTA'),
+      'MH' => t('MARSHALL ISLANDS'),
+      'MQ' => t('MARTINIQUE'),
+      'MR' => t('MAURITANIA'),
+      'MU' => t('MAURITIUS'),
+      'YT' => t('MAYOTTE'),
+      'MX' => t('MEXICO'),
+      'FM' => t('MICRONESIA, FEDERATED STATES OF'),
+      'MD' => t('MOLDOVA, REPUBLIC OF'),
+      'MC' => t('MONACO'),
+      'MN' => t('MONGOLIA'),
+      'ME' => t('MONTENEGRO'),
+      'MS' => t('MONTSERRAT'),
+      'MA' => t('MOROCCO'),
+      'MZ' => t('MOZAMBIQUE'),
+      'MM' => t('MYANMAR'),
+      'NA' => t('NAMIBIA'),
+      'NR' => t('NAURU'),
+      'NP' => t('NEPAL'),
+      'NL' => t('NETHERLANDS'),
+      'NC' => t('NEW CALEDONIA'),
+      'NZ' => t('NEW ZEALAND'),
+      'NI' => t('NICARAGUA'),
+      'NE' => t('NIGER'),
+      'NG' => t('NIGERIA'),
+      'NU' => t('NIUE'),
+      'NF' => t('NORFOLK ISLAND'),
+      'MP' => t('NORTHERN MARIANA ISLANDS'),
+      'NO' => t('NORWAY'),
+      'OM' => t('OMAN'),
+      'PK' => t('PAKISTAN'),
+      'PW' => t('PALAU'),
+      'PS' => t('PALESTINIAN TERRITORY, OCCUPIED'),
+      'PA' => t('PANAMA'),
+      'PG' => t('PAPUA NEW GUINEA'),
+      'PY' => t('PARAGUAY'),
+      'PE' => t('PERU'),
+      'PH' => t('PHILIPPINES'),
+      'PN' => t('PITCAIRN'),
+      'PL' => t('POLAND'),
+      'PT' => t('PORTUGAL'),
+      'PR' => t('PUERTO RICO'),
+      'QA' => t('QATAR'),
+      'RE' => t('REUNION'),
+      'RO' => t('ROMANIA'),
+      'RU' => t('RUSSIAN FEDERATION'),
+      'RW' => t('RWANDA'),
+      'BL' => t('SAINT BARTHELEMY'),
+      'SH' => t('SAINT HELENA, ASCENSION AND TRISTAN DA CUNHA'),
+      'KN' => t('SAINT KITTS AND NEVIS'),
+      'LC' => t('SAINT LUCIA'),
+      'MF' => t('SAINT MARTIN (FRENCH PART)'),
+      'PM' => t('SAINT PIERRE AND MIQUELON'),
+      'VC' => t('SAINT VINCENT AND THE GRENADINES'),
+      'WS' => t('SAMOA'),
+      'SM' => t('SAN MARINO'),
+      'ST' => t('SAO TOME AND PRINCIPE'),
+      'SA' => t('SAUDI ARABIA'),
+      'SN' => t('SENEGAL'),
+      'RS' => t('SERBIA'),
+      'SC' => t('SEYCHELLES'),
+      'SL' => t('SIERRA LEONE'),
+      'SG' => t('SINGAPORE'),
+      'SX' => t('SINT MAARTEN (DUTCH PART)'),
+      'SK' => t('SLOVAKIA'),
+      'SI' => t('SLOVENIA'),
+      'SB' => t('SOLOMON ISLANDS'),
+      'SO' => t('SOMALIA'),
+      'ZA' => t('SOUTH AFRICA'),
+      'GS' => t('SOUTH GEORGIA AND THE SOUTH SANDWICH ISLANDS'),
+      'ES' => t('SPAIN'),
+      'LK' => t('SRI LANKA'),
+      'SD' => t('SUDAN'),
+      'SR' => t('SURINAME'),
+      'SJ' => t('SVALBARD AND JAN MAYEN'),
+      'SZ' => t('SWAZILAND'),
+      'SE' => t('SWEDEN'),
+      'CH' => t('SWITZERLAND'),
+      'SY' => t('SYRIAN ARAB REPUBLIC'),
+      'TW' => t('TAIWAN, PROVINCE OF CHINA'),
+      'TJ' => t('TAJIKISTAN'),
+      'TZ' => t('TANZANIA, UNITED REPUBLIC OF'),
+      'TH' => t('THAILAND'),
+      'TL' => t('TIMOR-LESTE'),
+      'TG' => t('TOGO'),
+      'TK' => t('TOKELAU'),
+      'TO' => t('TONGA'),
+      'TT' => t('TRINIDAD AND TOBAGO'),
+      'TN' => t('TUNISIA'),
+      'TR' => t('TURKEY'),
+      'TM' => t('TURKMENISTAN'),
+      'TC' => t('TURKS AND CAICOS ISLANDS'),
+      'TV' => t('TUVALU'),
+      'UG' => t('UGANDA'),
+      'UA' => t('UKRAINE'),
+      'AE' => t('UNITED ARAB EMIRATES'),
+      'GB' => t('UNITED KINGDOM'),
+      'US' => t('UNITED STATES'),
+      'UM' => t('UNITED STATES MINOR OUTLYING ISLANDS'),
+      'UY' => t('URUGUAY'),
+      'UZ' => t('UZBEKISTAN'),
+      'VU' => t('VANUATU'),
+      'VA' => t('VATICAN CITY STATE'),
+      'VE' => t('VENEZUELA, BOLIVARIAN REPUBLIC OF'),
+      'VN' => t('VIET NAM'),
+      'VG' => t('VIRGIN ISLANDS, BRITISH'),
+      'VI' => t('VIRGIN ISLANDS, U.S.'),
+      'WF' => t('WALLIS AND FUTUNA'),
+      'EH' => t('WESTERN SAHARA'),
+      'YE' => t('YEMEN'),
+      'ZM' => t('ZAMBIA'),
+      'ZW' => t('ZIMBABWE'),
+    ),
+    '#required' => TRUE,
+  );
+//  $form['zip_postal_code'] = array(
+//    '#type' => 'textfield',
+//    '#title' => t('Zip/Postal Code'),
+//    '#size' => 40,
+//    '#maxlength' => 256,
+//    '#required' => TRUE,
+//  );
+//  $form['account_manager'] = array(
+//    '#type' => 'textfield',
+//    '#title' => t('BroadSoft Account Manager'),
+//    '#size' => 40,
+//    '#maxlength' => 256,
+//    '#required' => TRUE,
+//  );
+//  $form['relationship'] = array(
+//    '#type' => 'select',
+//    '#title' => t('Relationship with BroadSoft'),
+//    '#options' => array(
+//      'customer' => t('Customer'),
+//      'prospect' => t('Prospect'),
+//      'Channel/Reseller' => t('Channel/Reseller'),
+//      'InterOp/Tech Partner' => t('InterOp/Tech Partner'),
+//      'BroadSoft Employee' => t('BroadSoft Employee'),
+//    ),
+//    '#required' => TRUE,
+//  );
+//  $form['requesting_EMS'] = array(
+//    '#type' => 'select',
+//    '#title' => t('Are you requesting an EMS account?'),
+//    '#options' => array(
+//      'yes' => t('Yes'),
+//      'no' => t('No'),
+//    ),
+//    '#default_value' => 'no',
+//    '#required' => TRUE,
+//  );
+//  $form['EMS_account_email'] = array( //@@@ make dflt choice == none
+//    '#type' => 'textfield',
+//    '#title' => t('If so, please provide an alternate company email address'),
+//    '#size' => 40,
+//    '#maxlength' => 256,
+//    '#required' => FALSE,
+//  );
+  $form['item'] = array(
+    '#type' => 'item',
+    '#title' => t('*Indicates required field'),
+  );
+  $form['submit_button'] = array(
+    '#prefix' => '<div id="edit-button-container">',
+    '#type' => 'submit',
+    '#value' => t('Submit'),
+    '#suffix' => '</div>',
+  );
+
+  if (array_key_exists('FirstName', $variables)) {
+    $form['first_name']['#default_value'] = $variables['FirstName'];
+  }
+  if (array_key_exists('LastName', $variables)) {
+    $form['last_name']['#default_value'] = $variables['LastName'];
+  }
+  if (array_key_exists('Company', $variables)) {
+    $form['company']['#default_value'] = $variables['Company'];
+  }
+  if (array_key_exists('Title', $variables)) {
+    $form['title']['#default_value'] = $variables['Title'];
+  }
+  if (array_key_exists('Email', $variables)) {
+    $form['email']['#default_value'] = $variables['Email'];
+  }
+  if (array_key_exists('Phone', $variables)) {
+    $form['phone']['#default_value'] = $variables['Phone'];
+  }
+  if (array_key_exists('MobilePhone', $variables)) {
+    $form['mobile']['#default_value'] = $variables['MobilePhone'];
+  }
+  if (array_key_exists('Street', $variables)) {
+    $form['address']['#default_value'] = $variables['Street'];
+  }
+  if (array_key_exists('City', $variables)) {
+    $form['city']['#default_value'] = $variables['City'];
+  }
+  if (array_key_exists('State', $variables)) {
+    $form['state_prov']['#default_value'] = $variables['State'];
+  }
+  if (array_key_exists('Country', $variables)) {
+    $form['Country']['#default_value'] = $variables['Country'];
+  }
+  if (array_key_exists('PostalCode', $variables)) {
+    $form['zip_postal_code']['#default_value'] = $variables['PostalCode'];
+  }
+  if (array_key_exists('BroadSoft_Account_Manager__c', $variables)) {
+    $form['account_manager']['#default_value'] = $variables['BroadSoft_Account_Manager__c'];
+  }
+  if (array_key_exists('Relationship_with_BroadSoft__c', $variables)) {
+    $form['relationship']['#default_value'] = $variables['Relationship_with_BroadSoft__c'];
+  }
+  if (array_key_exists('Requesting_an_EMS_Account__c', $variables)) {
+    $form['requesting_EMS']['#default_value'] = $variables['Requesting_an_EMS_Account__c'];
+  }
+
+  return $form;
+}
+
+/** =======================================================================
+ * Get Stats for a given month
+ * $param year YYYY
+ * $param month MM 1..12
+ * @return array of (case letter) -> (nb of occurences)
+ */
+function broadsoft_account_request_GetMonthlyStats($YearNb, $MonthNb) {
+  $monthStat = array();
+
+  $minTimestamp = mktime(0, 0, 0, $MonthNb, 1, $YearNb);
+  $maxTimestamp = mktime(0, 0, 0, $MonthNb + 1 > 12 ? 1 : $MonthNb + 1, 1, $MonthNb + 1 > 12 ? $YearNb + 1 : $YearNb);
+
+  $caseArr = array('A', 'B', 'C', 'D', 'E', 'F');
+  foreach ($caseArr as $letter) {
+    $monthStat[$letter] = 0;
+  }
+
+  //DebugPrint(__LINE__, "Month Nb is ".$MonthNb." - Min timestamp is ".date("Y-m-d H:i:s", $minTimestamp));
+  //DebugPrint(__LINE__, "Month Nb is ".$MonthNb." - Max timestamp is ".date("Y-m-d H:i:s", $maxTimestamp));
+
+  $result = db_query("SELECT timestamp, variables FROM {broadsoft_log} WHERE type = 'Account Request'");
+  while ($row = db_fetch_array($result)) {
+    if ($row['timestamp'] >= $minTimestamp && $row['timestamp'] < $maxTimestamp) {
+      $variables = unserialize($row['variables']);
+
+      //if($MonthNb == 2)
+      //  DebugPrint(__LINE__, "Added 1 to case ".$variables['Case']." time is ".date("Y-m-d", $row['timestamp']));
+
+      $monthStat[$variables['Case']]++;
+    }
+  }
+
+  return $monthStat;
+}
+
+/**
+ * drupal hook_menu()
+ * see doc https://api.drupal.org/api/drupal/modules%21system%21system.api.php/function/hook_menu/7.x
+ * configuration page here:
+ * http://localhost/php/xchange/admin/settings/broadsoft_account_request
+ * http://xchange.broadsoft.com/php/xchange/admin/settings/broadsoft_account_request
+ *
+ * clear cache to enable the page
+ *
+ * @return type
+ */
+function broadsoft_account_request_menu() {
+  $items = array();
+  $items['admin/config/people/broadsoft_account_request'] = array(
+    'title' => 'Broadsoft Account Request Settings',
+    'description' => 'Allows to configure the account request email module.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('broadsoft_account_request_settings'),
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'broadsoft_account_request.admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Implements hook_menu_local_tasks_alter().
+ */
+function broadsoft_account_request_menu_local_tasks_alter(&$data, $router_item, $root_path) {
+  if ($root_path == 'user/register') {
+    foreach ($data['tabs'][0]['output'] as $key => $menu) {
+      if ($menu['#link']['path'] == 'user/register') {
+//          $menu['#link']['page_arguments'] = 'broadsoft_account_request_form';
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_menu_alter().
+ */
+function broadsoft_account_request_menu_alter(&$items) {
+  $items['user/register']['page arguments'] = array('broadsoft_account_request_form');
+  //$items['user/password']['page arguments'] = array('broadsoft_set_password_form');
+
+}
+
+/**
+ * Implements hook_mail().
+ */
+function broadsoft_account_request_mail($key, &$message, $params) {
+  switch ($key) {
+    case 'broadsoft_attachment':
+      $message['subject'] = $params['subject'];
+      $message['body'] = $params['message'];
+      $message['headers'] = $params['headers'];
+      $message['attachments'] = $params['attachments'];
+      break;
+  }
+}
+
+/**
+ * Add Account Request Log Entry
+ */
+function broadsoft_account_request_AddAccountRequestEntry($userEmail, $caseLetter, $caseShortMsg, $logArray) {
+  $logArray['Case'] = $caseLetter;
+  $logArray['CaseMsg'] = $caseShortMsg;
+  broadsoft_account_request_AddEntry_FILE_SCOPE_ONLY('Account Request', $userEmail, $logArray, WATCHDOG_NOTICE);
+  // also add as a statistic (since oct 11 2013)
+  if (module_exists('broadsoft_statistics')) {
+    broadsoft_statistics_addStat('Account Request', $logArray);
+  }
+}
+
+/**
+ * *****************************************************************************************************
+ * *****************************************************************************************************
+ * ALWAYS USE THIS FUNCTION TO CALL WATCHDOG
+ * ALWAYS USE THIS FUNCTION TO CALL WATCHDOG
+ * ALWAYS USE THIS FUNCTION TO CALL WATCHDOG
+ * ALWAYS USE THIS FUNCTION TO CALL WATCHDOG
+ * ALWAYS USE THIS FUNCTION TO CALL WATCHDOG
+ * *****************************************************************************************************
+ * *****************************************************************************************************
+ */
+function broadsoft_account_request_AddEntry_FILE_SCOPE_ONLY($type, $message, $variables = array(), $severity = WATCHDOG_NOTICE) {
+  // make sure type is known in list
+  if (in_array($type, broadsoft_account_request_GetKnownBSTypes())) {
+    watchdog($type, $message, $variables, $severity);
+    // also log in broadsoft_log table
+    db_query("INSERT INTO {broadsoft_log} (type, message, variables, severity, timestamp) VALUES(:type, :message, :variables, :severity, :timestamp)", array(
+      ':type' => $type,
+      ':message' => $message,
+      ':variables' => serialize($variables),
+      ':severity' => $severity,
+      ':timestamp' => time()
+    ));
+  }
+}
+
+/**
+ *
+ */
+function broadsoft_account_request_GetKnownBSTypes() {
+  // this is the way to make sure that our logs won't be deleted
+  return array(
+    'Account Request',
+    'Site Permissions',
+    'BroadSoft Generic',
+    'Bad Taxonomy'
+  );
+}

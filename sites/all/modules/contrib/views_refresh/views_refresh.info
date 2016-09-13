@@ -1,0 +1,13 @@
+name = Views Refresh
+description = Provides AJAX command to refresh the current page of the view.
+core = 7.x
+package = Views
+
+dependencies[] = views
+
+; Information added by Drupal.org packaging script on 2016-06-06
+version = "7.x-1.1"
+core = "7.x"
+project = "views_refresh"
+datestamp = "1465227868"
+

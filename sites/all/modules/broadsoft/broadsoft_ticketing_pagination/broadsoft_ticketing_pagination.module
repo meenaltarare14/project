@@ -1,0 +1,218 @@
+<?php
+
+/**
+ * function used in the block that will show the views with the
+ * number of issues form jira.
+ */
+
+  CONST BROADSOFT_TICKETING_VIEW = 'broadsoft_ticketing_integration';
+  CONST BROADSOFT_TICKETING_VIEW_DISPLAY = 'page';
+  CONST BROADSOFT_TICKETING_QUERY_BLOCK_DELTA = 62;
+  CONST BROADSOFT_TICKETING_PREFERENCES_BLOCK_DELTA = 63;
+  CONST BROADSOFT_TICKETING_ADMIN_BLOCK_DELTA = 'page';
+
+/**
+ * 
+ */
+function getTicketingIntegration()
+{
+
+  //load CSS if not already done
+  if (isD6()) {
+    $current_path = drupal_get_path('module', 'broadsoft_ticketing_pagination');
+    drupal_add_css($current_path . '/broadsoft_ticketing_pagination.css', 'module', 'all', TRUE);
+    drupal_add_js($current_path. '/javascript/throbbe.js');
+  }
+  $tab = filter_input(INPUT_GET, 'tab', FILTER_SANITIZE_STRING, FILTER_FLAG_NO_ENCODE_QUOTES | FILTER_FLAG_STRIP_HIGH | FILTER_FLAG_STRIP_LOW);
+  //initialize the deafault load of the current tab
+  $current_tab = (isset($tab) && !empty($tab)) ? $tab : 'pending';
+
+  //structure of the menu items and their relationship and location
+  $menu_items = array(
+    'left' => array(
+      'pending' => t('Action Required'),
+      'open' => t('Open/New'),
+      'closed' => t('Closed'),
+      'cuser' => t('My Tickets')
+    ),
+  );
+  if (isXchange()) {
+    $menu_items['right'] = array(
+      'preferences' => t('Preferences'),
+      'query' => t('Query'));
+  }
+
+  //reset the menu builder that will contain all items from the menu
+  $menu = '';
+  $CustomerGroup = filter_input(INPUT_GET, "cg", FILTER_SANITIZE_NUMBER_INT);
+
+  $item_count_per_display = array();
+
+  foreach ($menu_items['left'] as $status => $title) {
+    $item_count_per_display[$status] = getJiraListResults($status, 0, 1, null, null, true);
+  }
+
+  foreach ($menu_items as $menu_location => $menu_sections) {
+    foreach ($menu_sections as $item => $item_title) {
+      if ($item == $current_tab && $menu_location == 'right') {
+        $menu .= '<li class="active right-tab">';
+      } elseif ($item == $current_tab && $menu_location == 'left') {
+        $menu .= '<li class="active">';
+      } elseif ($item !== $current_tab && $menu_location == 'right') {
+        $menu .= '<li class="right-tab">';
+      } else {
+        $menu .= '<li>';
+      }
+      $cg = '';
+      if (!empty($CustomerGroup)) {
+        $cg = "&cg={$CustomerGroup}";
+      }
+      $menu .= '<a href="?tab=' . $item . $cg . '">' . $item_title;
+      if (isset($item_count_per_display[$item])) {
+        $menu .= ' (' . $item_count_per_display[$item] . ')';
+      }
+      $menu .= '</a></li>';
+    }
+  }
+
+  //print the menu
+  print '<div id="ticketing_integration">
+	      <ul class="ui-tabs-nav ui-helper-reset ui-helper-clearfix ui-widget-header ui-corner-all">
+	  		' . $menu . '
+	  	  </ul>
+	    </div>';
+
+  switch ($current_tab) {
+    case 'pending':
+    case 'open':
+    case 'closed':
+    case 'cuser':
+      /*
+       * /!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\
+       * CRITICAL VIEW ID AND DISPLAY ID 
+       * ARE IMPORTANT WHEN CONFIGURING THE VIEW
+       * ELSE THE MODULE CANNOT LINK AND DISPLAY
+       * /!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\/!\
+       */
+      //$result = views_get_view_result(BROADSOFT_TICKETING_VIEW);
+      $result = views_embed_view(BROADSOFT_TICKETING_VIEW, BROADSOFT_TICKETING_VIEW_DISPLAY);
+      if (!empty($result)) {
+        print $result;
+      } else {
+        print "View is misconfigured, please check that it matches the predefined settings";
+      }
+      break;
+    case 'preferences':
+      $block = module_invoke('block', 'block', 'view', BROADSOFT_TICKETING_PREFERENCES_BLOCK_DELTA);
+      print $block['content'];
+      break;
+    case 'query':
+      if (isXchange()) {
+        $block = module_invoke('block', 'block', 'view', BROADSOFT_TICKETING_QUERY_BLOCK_DELTA);
+        print $block['content'];
+      }
+      break;
+    case 'admin':
+      if (isXchange()) {
+        $block = module_invoke('block', 'block', 'view', BROADSOFT_TICKETING_QUERY_BLOCK_DELTA);
+        print $block['content'];
+      }
+      break;
+  }
+}
+
+/**
+ * 
+ * @global type $user
+ * @param string $status Ticket status to get through query
+ * @param int $startAt
+ * @param type $batchSize
+ * @param type $order_by
+ * @param type $sort
+ * @param type $countOnly
+ * @return type
+ */
+function getJiraListResults($status, $startAt = 0, $batchSize = 0, $order_by = null, $sort = null, $countOnly = false)
+{
+  global $user;
+  // selected customer/group is cached on the server
+  $UserTicketingPreferences = user_data(USER_DATA__TICKETING_PREFERENCES);
+  if (isXchange()) {
+    $ChosenCustomerGroupNode = node_load($UserTicketingPreferences['selectedCustomerGroupNid']);
+    $originatorID = BTI_get_exportable_group_name($ChosenCustomerGroupNode->nid);
+    $temp = node_load($ChosenCustomerGroupNode->field_customer_account[0]['nid']);
+    $customerID = $temp->title . ' (' . $temp->field_cid[0]['value'] . ')';
+  } else {
+    $ChosenCustomerGroupNode = get_group_data_from_nid($user, array_element('selectedCustomerGroupNid', $UserTicketingPreferences));
+    $originatorID = array_element('jira_originator', $ChosenCustomerGroupNode);
+    $customerID = array_element('jira_customer', $ChosenCustomerGroupNode);
+  }
+
+
+  //set the filter variables for the task status and severity
+  $filterArr['status'][preg_replace('/[^a-z\-]/', '', $status)] = TRUE;
+  $filterArr['severity'] = array();
+  $filterArr['severity']['critical'] = TRUE;
+  $filterArr['severity']['major'] = TRUE;
+  $filterArr['severity']['minor'] = TRUE;
+  $filterArr['severity']['informational'] = TRUE;
+
+  //call JIRA API for number of items
+  $ticketingService = new drupalJiraConnector(false);
+
+  if ($startAt == 0 && $batchSize == 0) {
+    $ticketList = $ticketingService->getTicketList($filterArr, $originatorID, $customerID, FALSE, FALSE, 0, 0);
+  } else {
+    $ticketList = $ticketingService->getTicketList($filterArr, $originatorID, $customerID, FALSE, FALSE, $startAt, $batchSize, $order_by, $sort);
+  }
+  if (!$countOnly) {
+    return $ticketList;
+  } else {
+    return $ticketingService->TotalSearchResults;
+  }
+}
+
+/**
+ * Implementation of hook_views_api().
+ */
+function broadsoft_ticketing_pagination_views_api()
+{
+  return array(
+    'api' => 3.0,
+    'path' => drupal_get_path('module', 'broadsoft_ticketing_pagination'),
+  );
+}
+
+/**
+ * 
+ * @global type $pager_page_array
+ * @global type $pager_total_items
+ * @global type $pager_total
+ */
+function ticketingFooter()
+{
+  //IMPORTANT NOTE, pager id has to be the default 0 else globals are broken and ajax pager as well
+  global $pager_page_array, $pager_total_items, $pager_total;
+  $page_get = (int) filter_input(INPUT_GET, 'page', FILTER_SANITIZE_NUMBER_INT);
+  if(empty($page_get)){ //seems to be the prefered way in drupal 7
+    $page_get = (int) filter_input(INPUT_POST, 'page', FILTER_SANITIZE_NUMBER_INT);
+  }
+  $page = isset($page_get) ? $page_get : 0;
+  $view = views_get_current_view(); //important, access the view currently being rendered
+  $items_per_page = (int)$view->query->pager->items_per_page; //Display items per page
+  $total_pages = intval($pager_total[0]);
+  $total = intval($pager_total_items[0]);
+
+  if ($total_pages == 1) {
+    echo "Displaying <b>" . $total . "</b> results";
+  } elseif ($total_pages > 1) {
+    $start = $page * $items_per_page + 1;
+    $end = $start + $items_per_page - 1;
+    if ($end > $total) {
+      $end = $total;
+    }
+    echo "<span id=\"display_results\">Displaying $start-$end of <b>" . $total . "</b> results</span>";
+  } else {
+    echo "<h4>There are no tickets matching this criteria</h4>";
+  }
+}

@@ -1,0 +1,7 @@
+; $Id:
+name = Broadsoft Auto Logout
+description = Automatically logout users inactive for 30 mins
+core = 7.x
+package = "Broadsoft"
+project = "Broadsoft"
+version = "7.0"

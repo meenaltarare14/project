@@ -1,0 +1,40 @@
+<?php
+
+/** =======================================================================
+  */
+function bs_craftRO_url($email=NULL) {
+  global $user;
+  if (isset($user) && ($user!=NULL)) {
+    if( isset($user->mail) ) {
+      $email=$user->mail;
+    }
+    // Use the username if email is empty
+    if( empty($email) && isset($user->name) ) {
+      $email=$user->name;
+    }
+  }
+  if( empty($email) ) {
+    //watchdog('BroadSoft Code', 'Xcelerate link with empty email ('.$user->mail.' for uid: '.$user->uid.')', NULL, WATCHDOG_WARNING);
+    return null;
+  }
+
+  $firstName=preg_replace('/@.*/', '', $email);
+  $lastName=preg_replace('/.*@/', '', $email);
+
+  $now = gmdate('YmdHis');
+  $ROHashKey = 'F%z8(2aDd%*z';
+  $page = "Search";
+
+  $str = $now.'|'.$ROHashKey.'|'.$email;
+  $hashString = urlencode(md5($str));
+
+//  $destServer = "https://xcelerate.ro.broadsoft.com";
+  $destServer = "https://rv.roinnovation.com";
+
+  $destUrl = $destServer."/broadsoft/loginsh.aspx?email=".$email."&timestamp=".$now."&code=".$hashString."&page=".$page."&firstName=".$firstName."&lastName=".$lastName;
+  watchdog('BroadSoft Code', 'Xcelerate link for email ('.$email.') to ('.$destUrl.')', NULL, WATCHDOG_DEBUG);
+
+  return $destUrl;
+}
+
+?>

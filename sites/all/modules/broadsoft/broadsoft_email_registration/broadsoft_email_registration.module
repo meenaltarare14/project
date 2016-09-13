@@ -1,0 +1,9 @@
+<?php
+/* 
+* Implements hook_email_registration_name().
+*/
+function broadsoft_email_registration_email_registration_name($edit, $account) {
+  $email_parts = explode('@', $account->mail);
+  return $email_parts[0];
+}
+?>

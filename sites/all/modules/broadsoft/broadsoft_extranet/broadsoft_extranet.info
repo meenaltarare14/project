@@ -1,0 +1,10 @@
+; $Id:
+name = BroadSoft Extranet
+description = Provides utilities used SPECIFICALLY for the Extranet site
+package = "Broadsoft"
+project = "Broadsoft"
+version = "7.0"
+core = "7.x"
+
+dependencies[] = broadsoft_user_management
+dependencies[] = broadsoft_utils

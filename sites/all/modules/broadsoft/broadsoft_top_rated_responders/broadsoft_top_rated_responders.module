@@ -1,0 +1,88 @@
+<?php
+
+
+/**
+ * NOTE: external functions.
+ * these functions loads from 'broadsoft_utils' module:
+ * bs_make_thumb_pic_url();
+ */
+
+
+function get_drupal_directory() {
+  return '/xchange'; //@@@
+}
+
+/**
+ * Implementation of hook_permission().
+ * Valid permissions for this module
+ *
+ * @return array An array of valid permissions for the broadsoft top rated responders module *
+ */
+function broadsoft_top_rated_responders_permission() {
+  return array(
+    'access broadsoft top rated responders content' => array(
+      'title' => t('Access broadsoft top rated responders content'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_block_info().
+ *
+ * @return none
+ * @see http://drupal.org/node/206758
+ */
+function broadsoft_top_rated_responders_block_info() {
+  $blocks['broadsoft_top_rated_responders_block_1']['info'] = t('BroadSoft Top Rated Responders');
+  $blocks['broadsoft_top_rated_responders_block_1']['properties']['administrative'] = TRUE;
+  return $blocks;
+}
+
+/**
+ * Implements hook_block_view().
+ */
+function broadsoft_top_rated_responders_block_view($delta = '') {
+  if ($delta == 'broadsoft_top_rated_responders_block_1') {
+    $block['subject'] = t('Top Rated Responders');
+    $block['content'] = _top_rated_responders_block_output();
+    return $block;
+  }
+}
+
+/**
+ * Implementation of _top_rated_responders_block_output
+ */
+function _top_rated_responders_block_output() {
+
+  $header = array();
+  $rows = array();
+
+  $sql = "SELECT DISTINCT(c.cid), c.uid, u_node.nid AS up_nid, u.name, u.picture, AVG(v.value) AS v_avg 
+			FROM {comment} c 
+			INNER JOIN {votingapi_vote} v ON c.cid = v.entity_id AND v.entity_type = 'comment' AND v.value_type = 'percent' AND v.tag = 'vote' 
+			INNER JOIN {node} u_node ON u_node.type = 'user_profile' AND u_node.uid = c.uid 
+			INNER JOIN {users} u ON u.uid = u_node.uid 
+			WHERE (v.value > 0) 
+			GROUP BY c.uid 
+			ORDER BY v_avg DESC
+			LIMIT 0,5 ";
+
+  $result = db_query($sql);
+  foreach ($result as $record) {
+    $image = (!empty($record->picture)) ? '<div><img src="' . bs_make_thumb_pic_url($record->picture) . '" /></div>' : '<div><img src="' . bs_make_thumb_pic_url('default_avatar.jpg') . '" /></div>'; //@@@ theme...
+    $rows[] = array(
+      '<a href="' . bs_get_site_base_path() . 'user/' . $record->uid . '">' . $image . '</a>',
+      '<h3>' . l(_filter_url_trim($record->name, 15),
+        'user/' . $record->uid) . '</h3>' . theme('fivestar_static', $record->v_avg)
+    );
+  }
+
+  $variables = array(
+    'header' => $header,
+    'rows' => $rows,
+    'attributes' => array('width' => '100%', 'class' => 'views-table sticky-enabled cols-1 sticky-enabled'),
+  );
+  $output = theme_table($variables);
+
+  return $output;
+}

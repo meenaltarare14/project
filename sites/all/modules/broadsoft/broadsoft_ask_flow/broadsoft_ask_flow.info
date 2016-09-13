@@ -1,0 +1,6 @@
+name = Broadsoft Ask Flow
+description = Broadsoft Ask Flow: Site Search
+package = "Broadsoft"
+project = "Broadsoft"
+version = "7.1"
+core = "7.x"

@@ -1,0 +1,810 @@
+<?php
+
+define('TOP_RESULTS_RECOMMENDATION_COUNT', 8);
+define('MASTER_SEARCH_API_INDEX', 'ticketing_suggestions');
+define('AF_STOP_WORDS', 'a,an,i,me,you,the');
+
+define('VIEW_CONTENT_SCORE', 1);
+define('DIRECT_UPVOTE_SCORE', 5);
+define('DIRECT_DOWNVOTE_SCORE', -3);
+define('INDIRECT_UPVOTE_SCORE', 3);
+define('INDIRECT_DOWNVOTE_SCORE', -2);
+
+include_once("includes/class.stemmer.inc");
+/*
+ * Did this answer your question form
+ */
+function content_feedback_form($form, $form_state, $nid, $modal=false) {
+  $form = array();
+  if(!isset($form_state['improve_feedback'])) {
+    $form_state['improve_feedback'] = false;
+    $form_state['improve_feedback_modal'] = false;
+  }
+  $form['title'] = array(
+    '#markup' => '<h4>'.t('Did this answer your question?').'</h4>'.
+                '<p>'.t('Contribute to our community by rating this doc and increase your ratings!').'</p>',
+    '#prefix' => '<div class="col-md-5">',
+    '#suffix' => '</div>',
+  );
+  $form['node_id'] = array(
+    '#type' => 'hidden',
+    '#value' => $nid,
+  );
+  $form['buttons'] = array(
+    '#type' => 'fieldset',
+    '#prefix' => '<div id="fb-buttons" class="col-md-7"><div class="ticket__submit-line">',
+    '#suffix' => '</div></div>',
+    '#theme_wrappers' => array(),
+  );
+  $form['buttons']['yes'] = array(
+    '#type' => 'submit',
+    '#value' => t('Yes'),
+    '#attributes' => array('class' => array('ticket__submit', 'like-button', 'ticket__submit-text')),
+    '#ajax' => array(
+      'callback' => 'feedback_yes_callback',
+    ),
+    '#submit' => array('feedback_yes_submit'),
+  );
+  $form['buttons']['no'] = array(
+    '#type' => 'submit',
+    '#value' => t('No'),
+    '#attributes' => array('class' => array('ticket__submit', 'unlike-button', 'ticket__submit-text')),
+    '#ajax' => array(
+      'callback' => 'feedback_no_callback',
+    ),
+    '#submit' => array('feedback_no_submit'),
+  );
+  $form['modal_af_thankyou'] = array(
+    '#markup' => '<div id="afPopup"></div>',
+  );
+
+  if($form_state['improve_feedback']) {
+    $form['buttons'] = array(
+      '#type' => 'fieldset',
+      '#prefix' => '<div id="fb-buttons" class="col-md-7 advice-form"><p>'.t('Thank you, let us know how we can improve this article').'</p>',
+      '#suffix' => '</div>',
+      '#title_display' => 'hidden',
+    );
+    $form['buttons']['ifb_text'] = array(
+      '#type' => 'textarea',
+      '#title_display' => 'hidden',
+      '#rows' => 5,
+    );
+    $form['buttons']['ifb_submit'] = array(
+      '#type' => 'submit',
+      '#name' => 'ifb_submit',
+      '#value' => t('Submit'),
+      '#attributes' => array('class' => array('ticket__submit', 'ticket__submit-text')),
+      '#ajax' => array(
+        'callback' => 'improve_fb_inline_callback',
+      ),
+      '#submit' => array('improve_fb_inline_submit_callback'),
+    );
+  }
+
+  if($form_state['improve_feedback_modal']) {
+    $form['modal_af_feedback'] = array(
+      '#type' => 'fieldset',
+      '#prefix' => '<div id="modal-af-feedback">',
+      '#suffix' => '</div>',
+      '#title_display' => 'hidden',
+      '#theme_wrappers' => array('af_feedback_modal_fieldset'),
+    );
+    $form['modal_af_feedback']['fb_text'] = array(
+      '#type' => 'textarea',
+      '#title_display' => 'hidden',
+      '#rows' => 4,
+    );
+    $form['modal_af_feedback']['fb_cancel'] = array(
+      '#type' => 'submit',
+      '#name' => 'fb_cancel',
+      '#value' => t('Cancel'),
+      '#attributes' => array('class' => array('ticket__submit', 'no-button', 'ticket__submit-text')),
+      '#ajax' => array(
+        'callback' => 'improve_fbc_callback',
+      ),
+      '#submit' => array('improve_fbc_submit_callback'),
+    );
+    $form['modal_af_feedback']['fb_submit'] = array(
+      '#type' => 'submit',
+      '#name' => 'fb_submit',
+      '#value' => t('Submit'),
+      '#attributes' => array('class' => array('ticket__submit', 'ticket__submit-text')),
+      '#ajax' => array(
+        'callback' => 'improve_fb_callback',
+      ),
+      '#submit' => array('improve_fb_submit_callback'),
+    );
+  }
+  else {
+    $form['modal_af_feedback'] = array(
+      '#type' => 'fieldset',
+      '#prefix' => '<div id="modal-af-feedback">',
+      '#suffix' => '</div>',
+    );
+  }
+  $form['#attached'] = array(
+    'js' => array(
+      drupal_get_path('module', 'broadsoft_ask_flow').'/broadsoft_ask_flow.js' => array('type' => 'file'),
+    )
+  );
+  if($modal) {
+    $form['#theme'][] = 'af_feedback_modal';
+  }
+  return $form;
+}
+
+function feedback_yes_callback($form, &$form_state) {
+  $commands = array();
+  $commands[] = ajax_command_replace('#afPopup', get_popup_markup('afPopup', 'Thank you for your feedback!'));
+  $commands[] = array("command" => 'showPopup', 'name' => 'afPopup');
+  $commands[] = array("command" => 'hidePopup', 'name' => 'afPopup', 'time' => 3000);
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+function feedback_yes_submit($form, &$form_state) {
+  // TODO: increase content rating and other logic
+  if(isset($_SESSION['ask_flow']['search_term'])) {
+    // this means the user probably found the answer
+    // unset search term and suggestions from session
+    search_success_update($form_state['values']['node_id']);
+  }
+  else {
+    // content upvoted without a search
+    // update content radioactivity?
+  }
+}
+
+function feedback_no_callback($form, &$form_state) {
+  $commands = array();
+  $commands[] = ajax_command_replace('#fb-buttons', render($form['buttons']));
+  //$commands[] = ajax_command_replace('#modal-af-feedback', render($form['modal_af_feedback']));
+  //$commands[] = array("command" => 'showPopup', 'name' => 'afFbForm');
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+function feedback_no_submit($form, &$form_state) {
+  // TODO: decrease content rating and other logic
+  if(isset($_SESSION['ask_flow']['search_term'])) {
+    search_failure_update($form_state['values']['node_id']);
+  }
+  $form_state['improve_feedback'] = TRUE;
+  $form_state['rebuild'] = TRUE;
+}
+
+function improve_fb_callback($form, &$form_state) {
+  $commands = array();
+  $commands[] = ajax_command_replace('#afPopup', get_popup_markup('afPopup', 'Thank you for your feedback!'));
+  $commands[] = array("command" => 'showPopup', 'name' => 'afPopup');
+  $commands[] = array("command" => 'hidePopup', 'name' => 'afPopup', 'time' => 3000);
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+
+function improve_fb_submit_callback($form, &$form_state) {
+  // TODO: save user feedback
+}
+
+function get_popup_markup($id, $message) {
+  $ret = '<div class="modal fade alert-popup" id="'.$id.'" tabindex="-1" role="dialog" aria-labelledby="'.$id.'" aria-hidden="true">
+      <div class="vertical-alignment-helper">
+          <div class="modal-dialog vertical-align-center">
+              <div class="modal-content">
+                  <div class="bsModal__container">
+                      <div class="bsModal__header">
+                          <!-- <button type="button" class="bsModal__close" data-dismiss="modal" aria-hidden="true">&times;</button> -->
+                      </div>
+                      <div class="bsModal__content">
+                          <div>
+                              <div class="confirm__section">
+                                  <div>
+                                      <h3 class="title">'.$message.'</h3>
+                                  </div>
+                              </div>
+                          </div>
+
+                      </div>
+                  </div>
+              </div>
+          </div>
+      </div>
+  </div>';
+  return $ret;
+}
+
+function broadsoft_ask_flow_form_alter(&$form, &$form_state, $form_id) {
+  // TODO test code; remove FALSE from condition
+  if($form_id == 'views_exposed_form' && strstr($form['#id'], ('broadsoft-content-search'))) {
+    $form['search_api_views_fulltext']['#title'] = t('Search'); // Change the text on the label element
+    $form['search_api_views_fulltext']['#title_display'] = 'invisible';
+    $form['search_api_views_fulltext']['#attributes']['placeholder'] = t('Ask your question...');
+    //$form['basic']['keys']['#attributes']['class'] = array("form-control", "ask-query");
+    //$form['#attributes']['class'] = array("form-ask", "form-inline");
+    //add autocomplete to title textfield
+    $autocomplete_id = 'broadsoft_ticketing';
+    $search = search_api_autocomplete_search_load($autocomplete_id);
+    if ($search && $search->enabled) {
+      $search->alterElement($form['search_api_views_fulltext']);
+    }
+    // Change to radio buttons for search page
+    if(isset($form['search_api_views_fulltext_op'])) {
+      $form['search_api_views_fulltext_op']['#type'] = 'radios';
+      $form['search_api_views_fulltext_op']['#process'] = array('form_process_radios');
+      $form['search_api_views_fulltext_op']['#theme'] = 'select_as_radios';
+    }
+  }
+  // Override search forms
+  else if(substr($form['#id'], 0, strlen('search-form')) === 'search-form') {
+    $form['basic']['keys']['#title'] = t('Search'); // Change the text on the label element
+    $form['basic']['keys']['#title_display'] = 'invisible';
+    $form['basic']['keys']['#attributes']['placeholder'] = t('Ask your question...');
+    $form['basic']['submit']['#attributes']['class'][] = 'element-invisible';
+    $form['basic']['keys']['#attributes']['class'] = array("form-control", "ask-query");
+    $form['#attributes']['class'] = array("form-ask", "form-inline");
+    $form['#submit'] = array('ask_flow_search_handler');
+    $autocomplete_id = 'broadsoft_ticketing';
+    $search = search_api_autocomplete_search_load($autocomplete_id);
+    if ($search && $search->enabled) {
+      $search->alterElement($form['basic']['keys']);
+    }
+  }
+}
+
+function ask_flow_search_handler($form, &$form_state) {
+  $key = isset($form_state['values']['keys']) ? $form_state['values']['keys']: '';
+  $options = array('query' => array('search_api_views_fulltext' => $key));
+  drupal_goto('broadsoft-content-search', $options);
+}
+
+function broadsoft_ask_flow_menu() {
+  $items = array();
+  $items['admin/config/search/broadsoft_ask_flow'] = array(
+    'title' => 'Broadsoft Ask Flow Settings',
+    'description' => 'Allows to configure ask-flow module.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('broadsoft_ask_flow_admin'),
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'broadsoft_ask_flow.admin.inc',
+  );
+  return $items;
+}
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function broadsoft_ask_flow_ctools_plugin_directory($owner, $plugin_type) {
+  if ($owner == 'ctools' && $plugin_type == 'content_types') {
+    return 'plugins/content_types';
+  }
+}
+
+function broadsoft_ask_flow_search_api_autocomplete_suggestions_alter(array &$suggestions, array $context) {
+  // alter search api result
+  // sort results etc
+  // hold search suggestion results in session to display it in bottom recommendation area
+  // $_SESSION['ask_flow_suggestions'] = array();
+
+  if($context['query']->getKeys() != '' && $context['query']->getIndex()->machine_name == MASTER_SEARCH_API_INDEX && count($suggestions) > 1) {
+    $searchq = $context['query']->getKeys();
+    $hash_query = hash_search_query($searchq);
+    $stid = get_search_term($hash_query);
+    if ($stid) {
+      // we have a search term
+      // sort them based on out rating tables
+      $sort = $context['query']->getSort();
+      if(isset($sort['search-api-relevance']))
+        $results['results'] = search_term_rating_sort($suggestions, $stid);
+      $_SESSION['ask_flow']['save_search'] = FALSE;
+    } else {
+      // add results to search and rating tables
+      // we do not add search term here as a lot of incomplete terms would be saved
+      // add_search_term_rating($hash_query, $suggestions);
+      $_SESSION['ask_flow']['save_search'] = TRUE;
+    }
+    // Add the search term in $_SESSION for later use
+    $_SESSION['ask_flow']['search_term'] = $hash_query;
+    $_SESSION['ask_flow']['top_results'] = TOP_RESULTS_RECOMMENDATION_COUNT > count($suggestions) ? $suggestions : array_slice($suggestions, 0, TOP_RESULTS_RECOMMENDATION_COUNT);
+    $_SESSION['ask_flow']['results'] = $suggestions;
+  }
+  }
+
+function broadsoft_ask_flow_search_api_query_alter(SearchApiQueryInterface $query) {
+  // Before querying search api indexes
+  // we search in search terms table
+}
+
+function broadsoft_ask_flow_search_api_results_alter(array &$results, SearchApiQueryInterface $query) {
+  // After query runs
+  $search_id = $query->getOption('search id');
+  if(strstr($search_id, 'search_api_autocomplete')) {
+    // Handle autocomplete suggestions separately
+    return;
+  }
+  if($query->getKeys() != '' && $query->getIndex()->machine_name == MASTER_SEARCH_API_INDEX && $results['result count'] > 1) {
+    $searchq = $query->getKeys();
+    $hash_query = hash_search_query($searchq);
+    $stid = get_search_term($hash_query);
+    if ($stid) {
+      // we have a search term
+      // sort them based on out rating tables
+      $sort = $query->getSort();
+      if(isset($sort['search-api-relevance']))
+        $results['results'] = search_term_rating_sort($results['results'], $stid);
+    } else {
+      // add results to search and rating tables
+      add_search_term_rating($hash_query, $results['results']);
+    }
+    // Add the search term in $_SESSION for later use
+    if(isset($_SESSION['ask_flow']['search_term']) && $_SESSION['ask_flow']['search_term'] == $hash_query) {
+      // this means the query is same and user is paginating: add results to array
+      $_SESSION['ask_flow']['results'] = array_merge($_SESSION['ask_flow']['results'], $results['results']);
+
+    }
+    else {
+      $_SESSION['ask_flow']['search_term'] = $hash_query;
+      $_SESSION['ask_flow']['top_results'] = TOP_RESULTS_RECOMMENDATION_COUNT > count($results['results']) ? $results['results'] : array_slice($results['results'], 0, TOP_RESULTS_RECOMMENDATION_COUNT);
+      $_SESSION['ask_flow']['results'] = $results['results'];
+      $_SESSION['ask_flow']['save_search'] = FALSE;
+    }
+  }
+}
+
+/*
+ * Adds entries to search_term and search_term_rating tables
+ */
+function add_search_term_rating($hashed_query, $results) {
+  global $user;
+  // limit top results saved in db
+  if(TOP_RESULTS_RECOMMENDATION_COUNT < count($results)) {
+    $results = array_slice($results, 0, TOP_RESULTS_RECOMMENDATION_COUNT);
+  }
+  // create an entry in search_terms table
+  $q = db_insert('broadsoft_search_terms');
+  $q->fields(array('search_term' => $hashed_query, 'uid' => $user->uid, 'timestamp' => REQUEST_TIME));
+  $stid = $q->execute();
+  // populate search terms rating table
+  $q = db_insert('broadsoft_search_term_rating');
+  $q->fields(array('stid', 'entity_id', 'score'));
+  foreach($results as $key => $res) {
+    $q->values(array($stid, $key, 1));
+  }
+  $q->execute();
+}
+
+/*
+ * If search term exists in db, returns stid else 0
+ */
+function get_search_term($searchq) {
+  if($searchq == '') return 0;
+  $res = db_select('broadsoft_search_terms', 'bst');
+  $res->fields('bst', array('stid'));
+  $res->condition('search_term', $searchq, '=');
+  $stid = $res->execute()->fetchField();
+  if($stid) {
+    // Update timestamp
+    // we can later clear unused terms
+    $q = db_update('broadsoft_search_terms');
+    $q->fields(array('timestamp' => REQUEST_TIME));
+    $q->condition('stid', $stid, '=');
+    return $stid;
+  }
+  return 0;
+}
+
+/*
+ * Hash a search query
+ */
+function hash_search_query($searchq) {
+  // trim, tokenize, stem, remove stop words, sort and join with '+'
+  $searchq = trim($searchq);
+  $terms = explode(' ', $searchq);
+  $stop_words = preg_split("/[\r\n,]+/", variable_get("broadsoft_af_stopwords", AF_STOP_WORDS));
+  $processed = array();
+  $a = new Stemmer();
+  foreach($terms as $term) {
+    $stem = $a->stem($term);
+    if(in_array($stem, $stop_words)) {
+      continue;
+    }
+    $processed[] = $stem;
+  }
+  sort($processed);
+  return implode('+',$processed);
+}
+
+/*
+ * Sort results based on search rating
+ */
+function search_term_rating_sort($results, $stid) {
+  // get recommended entity ids
+  $q = db_select('broadsoft_search_term_rating', 'br');
+  $q->fields('br', array('entity_id'));
+  $q->orderBy('score', 'DESC');
+  $q->condition('stid', $stid, '=');
+  $recom = $q->execute()->fetchAllAssoc('entity_id');
+  // standardize both arrays before sorting (just in case)
+  // these cases might occur and break sorting
+  if(count($results) > count($recom)) {
+    foreach ($results as $res) {
+      if (!isset($recom[$res['id']])) {
+        $recom[$res['id']] = $res['id'];
+      }
+    }
+  }
+  else if(count($results) < count($recom)) {
+    foreach ($recom as $res) {
+      if (!isset($results[$res['id']])) {
+        $results[$res['id']] = array('id' => $res['id']);
+      }
+    }
+  }
+  $recom = array_keys($recom);
+  // sorting $results array based on order of $recom array
+  uasort($results, function($a, $b) use ($recom) {
+    $flipped = array_flip($recom);
+    $leftPos = $flipped[$a['id']];
+    $rightPos = $flipped[$b['id']];
+    return $leftPos >= $rightPos;
+  });
+  return $results;
+}
+
+
+/*
+ * Adds a score to the search-term entity pair (negative values decrements)
+ */
+function search_term_update_score($search_term, $entity_id, $score) {
+  $hashed_term = hash_search_query($search_term);
+  $stid = get_search_term($hashed_term);
+  if(!$stid) {
+    return NULL;
+  }
+  // Update score for stid and entity_id
+  $q = db_update('broadsoft_search_term_rating');
+  $q->expression('score', 'score + :ups', array(':ups' => $score));
+  $q->condition('entity_id', $entity_id, '=');
+  $q->condition('stid', $stid, '=');
+  $q->execute();
+}
+
+/*
+ * Get score for search term and entity pair
+ */
+function get_term_score($search_term, $entity_id) {
+  $hashed_term = hash_search_query($search_term);
+  $stid = get_search_term($hashed_term);
+  if(!$stid) {
+    return NULL;
+  }
+  // get score for stid and entity_id
+  $q = db_select('broadsoft_search_term_rating', 'bstr');
+  $q->fields('bstr', array('score'));
+  $q->condition('entity_id', $entity_id, '=');
+  $q->condition('stid', $stid, '=');
+  return $q->execute()->fetchField();
+}
+
+/*
+ * Search success rating update
+ */
+function search_success_update($result_id, $indirect=FALSE) {
+  if($result_id <= 0) {
+    $_SESSION['ask_flow'] = array();
+    if (variable_get('broadsoft_af_debug', 1)) {
+      drupal_set_message('Killing search in session');
+    }
+    return;
+  }
+  if($indirect) {
+    search_term_update_score($_SESSION['ask_flow']['search_term'], $result_id, variable_get('broadsoft_af_upvote_ind_score', INDIRECT_UPVOTE_SCORE));
+    if (variable_get('broadsoft_af_debug', 1)) {
+      drupal_set_message('User went out of search. The last node '.$result_id.' is given +'.variable_get('broadsoft_af_upvote_ind_score', INDIRECT_UPVOTE_SCORE).' score.');
+    }
+  }
+  else {
+    search_term_update_score($_SESSION['ask_flow']['search_term'], $result_id, variable_get('broadsoft_af_upvote_score',DIRECT_UPVOTE_SCORE));
+    if (variable_get('broadsoft_af_debug', 1)) {
+      drupal_set_message('User directly upvoted content. The node '.$result_id.' is given +'.variable_get('broadsoft_af_upvote_score', DIRECT_UPVOTE_SCORE).' score.');
+    }
+  }
+  $_SESSION['ask_flow'] = array();
+}
+
+/*
+ * Search fail rating update
+ */
+function search_failure_update($result_id, $indirect=FALSE) {
+  if($result_id <= 0) {
+    $_SESSION['ask_flow'] = array();
+    if (variable_get('broadsoft_af_debug', 1)) {
+      drupal_set_message('Killing search in session');
+    }
+    return;
+  }
+  if($indirect) {
+    search_term_update_score($_SESSION['ask_flow']['search_term'], $result_id, variable_get('broadsoft_af_downvote_ind_score', INDIRECT_DOWNVOTE_SCORE));
+    if (variable_get('broadsoft_af_debug', 1)) {
+      drupal_set_message('We assume last content is not useful. The last node '.$result_id.' is given -'.variable_get('broadsoft_af_downvote_ind_score', INDIRECT_DOWNVOTE_SCORE).' score.');
+    }
+    $_SESSION['ask_flow'] = array();
+  }
+  else {
+    search_term_update_score($_SESSION['ask_flow']['search_term'], $result_id, variable_get('broadsoft_af_downvote_score',DIRECT_DOWNVOTE_SCORE));
+    if (variable_get('broadsoft_af_debug', 1)) {
+      drupal_set_message('User downvoted content. The node '.$result_id.' is given -'.variable_get('broadsoft_af_downvote_score', DIRECT_DOWNVOTE_SCORE).' score.');
+    }
+  }
+
+}
+
+/*
+ * Removes a search term and associated ratings from tables
+ */
+// TODO
+
+/* Rules for search rating score */
+
+/*
+ * Implements hook_node_view
+ */
+function broadsoft_ask_flow_node_view($node, $view_mode, $langcode) {
+  if($view_mode == 'full') {
+    if(isset($_SESSION['ask_flow']['search_term'])) {
+      // If current node is within results array
+      if(isset($_SESSION['ask_flow']['results'][$node->nid])) {
+        if (variable_get('broadsoft_af_debug', 1)) {
+          $node->content['afdebug'] = array('#markup' => get_debug_info($node));
+        }
+        // User came to this node searching for a query
+        // increment search-term entity score by 1
+        search_term_update_score($_SESSION['ask_flow']['search_term'], $node->nid, VIEW_CONTENT_SCORE);
+        if (isset($_SESSION['ask_flow']['prev_id'])) {
+          // the previous content didnt answer the query
+          search_term_update_score($_SESSION['ask_flow']['search_term'], $_SESSION['ask_flow']['prev_id'], -VIEW_CONTENT_SCORE);
+        }
+        // update prev node id
+        $_SESSION['ask_flow']['prev_id'] = $node->nid;
+        // save new autosuggest query and results
+        if ($_SESSION['ask_flow']['save_search']) {
+          add_search_term_rating($_SESSION['ask_flow']['search_term'], $_SESSION['ask_flow']['top_results']);
+          $_SESSION['ask_flow']['save_search'] = FALSE;
+        }
+      }
+      else {
+        // User strayed out of results
+        // TODO handle search in session (Did user find the answer in the previous node?)
+      }
+      return $node;
+    }
+  }
+}
+
+function broadsoft_ask_flow_page_alter(&$page) {
+  if (isset($_SESSION['ask_flow']['search_term']) && !strstr($_GET['q'], 'ticketing')) {
+    // We handle user going to ticketing separately
+    $node = menu_get_object();
+    if($node && isset($_SESSION['ask_flow']['results'][$node->nid])) {
+      // User is going through the results
+      // Todo: Relevant stuff
+      // This is handled in hook_node_view
+    }
+    else {
+      // User strayed out of search
+      // Todo: Ask for feedback using a modal? or Assume user found the result in prev_node
+      // Assuming prev_node success for now
+      $prev_id = isset($_SESSION['ask_flow']['prev_id']) ? $_SESSION['ask_flow']['prev_id'] : 0;
+      search_success_update($prev_id, TRUE);
+    }
+  }
+}
+
+function broadsoft_ask_flow_user_logout($account){
+  if (isset($_SESSION['ask_flow']['search_term'])) {
+    // if user attempts to logout with search in session
+    // Assume prev_id content was helpful
+    $prev_id = $_SESSION['ask_flow']['prev_id'];
+    search_success_update($prev_id, TRUE);
+  }
+}
+
+function broadsoft_ask_flow_broadsoft_ticket_created($ticketID) {
+  if (isset($_SESSION['ask_flow']['search_term'])) {
+    // this means the user searched for something, didnt find a solution
+    // and decided to create a ticket anyway. We downvote prev_id content
+    $prev_id = $_SESSION['ask_flow']['prev_id'];
+    search_failure_update($prev_id, TRUE);
+  }
+}
+
+/*
+ * Debug info
+ */
+function get_debug_info($node) {
+  if(isset($_SESSION['ask_flow']['prev_id']))
+    $pnid = $_SESSION['ask_flow']['prev_id'];
+  else
+    $pnid = 0;
+  $cnid = $node->nid;
+  $sterm = $_SESSION['ask_flow']['search_term'];
+  $cscore = get_term_score($sterm, $node->nid);
+  $ret = '<div class="af-debug">'.
+    '<span>Search Term: '.$sterm.'</span>'.
+    '<span>Current score: '.$cscore.'</span>'.
+  '<span>Previous nid: '.$pnid.'</span>'.
+    '<span>Current nid: '.$cnid.'</span>'.
+  '</div>';
+  return $ret;
+}
+
+/*
+ * Content page action buttons form
+ */
+function action_buttons_form($form, &$form_state, $nid) {
+  global $user;
+  $form = array();
+  if(!isset($form_state['share_popup'])) {
+    $form_state['share_popup'] = FALSE;
+  }
+  $form['cnid'] = array(
+    '#type' => 'hidden',
+    '#value' => $nid,
+  );
+
+  $form['favorite'] = array(
+    '#markup' =>  flag_create_link('favorite_content', $nid),
+    /*'#value' => decode_entities('&#xf08a;').' '.t('Favorite'), // heart icon
+    '#attributes' => array('class' => array('fa', 'btn', 'btn-fav', 'btn-orange')),
+    '#ajax' => array(
+      'callback' => 'action_favorite_callback',
+    ),
+    '#submit' => array('action_favorite_submit'),*/
+  );
+  $form['share'] = array(
+    '#type' => 'submit',
+    '#value' => decode_entities('&#xf045;').' '.t('Share'), // share icon
+    '#attributes' => array('class' => array('fa', 'btn', 'btn-share', 'btn-orange')),
+    '#ajax' => array(
+      'callback' => 'action_share_callback',
+    ),
+    '#submit' => array('action_share_submit'),
+  );
+  $form['download'] = array(
+    '#type' => 'submit',
+    '#value' => decode_entities('&#xf019;').' '.t('Pdf'), // download icon
+    '#attributes' => array('class' => array('fa', 'btn', 'btn-download', 'btn-orange')),
+    '#submit' => array('action_download_submit'),
+  );
+  $form['share_modal'] = array(
+    '#type' => 'fieldset',
+    '#prefix' => '<div id="modal-share">',
+    '#suffix' => '</div>',
+    '#title_display' => 'hidden',
+  );
+  if($form_state['share_popup']) {
+    $form['share_modal'] = array(
+      '#type' => 'fieldset',
+      '#prefix' => '<div id="modal-share">',
+      '#suffix' => '</div>',
+      '#title_display' => 'hidden',
+      '#theme_wrappers' => array('af_share_modal'),
+    );
+    $AssignedCustomerGroups = GetUserAccountGroupData($user->uid, $user->mail);
+    if(count($AssignedCustomerGroups['groups']['view'])>0) {
+      $options = array();
+      foreach($AssignedCustomerGroups['groups']['view'] as $key=>$val) {
+        $options[$key] = $val['jira_originator'];
+      }
+      $UserTicketingPreferences = user_data(USER_DATA__TICKETING_PREFERENCES);
+      $form['share_modal']['groups'] = array(
+        '#type' => 'select',
+        '#options' => $options,
+        '#default_value' => $UserTicketingPreferences['selectedCustomerGroupNid'],
+        '#ajax' => array(
+          'callback' => 'share_group_select_callback',
+        )
+      );
+      $cgroup = isset($form_state['values']['share_modal']['groups']) ? $form_state['values']['share_modal']['groups'] : $UserTicketingPreferences['selectedCustomerGroupNid'];
+      $form['share_modal']['emails'] = array(
+        '#type' => 'checkboxes',
+        '#options' => users_in_group($cgroup),
+        '#prefix' => '<div id="share-emails">',
+        '#suffix' => '</div>',
+        '#theme_wrappers' => array('themed_checkboxes'),
+      );
+      $form['share_modal']['message'] = array(
+        '#type' => 'textarea',
+        '#title_display' => 'hidden',
+        '#rows' => 4,
+      );
+      $form['share_modal']['send_message'] = array(
+        '#type' => 'submit',
+        '#value' => t('Send'), // heart icon
+        '#attributes' => array('class' => array('ticket__submit', 'ticket__submit-text')),
+        '#ajax' => array(
+          'callback' => 'share_send_message_callback',
+        ),
+        '#submit' => array('share_send_message_submit'),
+      );
+    }
+    else {
+      $form['share_modal']['error'] = array(
+        '#markup' => '<span class="error-message">'.t('Unable to share. You are not part of any group!').'</span>',
+      );
+    }
+  }
+  $form['modal_share_thankyou'] = array(
+    '#markup' => '<div id="alertClose"></div>',
+  );
+  return $form;
+}
+
+function action_download_submit($form, $form_state) {
+  // redirect to pdf version url
+  drupal_goto('print/'.$form_state['values']['cnid']);
+}
+
+function action_share_callback($form, $form_state) {
+  $commands = array();
+  $commands[] = ajax_command_replace('#modal-share', render($form['share_modal']));
+  $commands[] = array("command" => 'showPopup', 'name' => 'shareModal');
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+function action_share_submit($form, &$form_state) {
+  $form_state['share_popup'] = TRUE;
+  $form_state['rebuild'] = TRUE;
+}
+
+function share_group_select_callback($form, &$form_sate) {
+  $commands = array();
+  $commands[] = ajax_command_replace('#share-emails', render($form['share_modal']['emails']));
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+function share_send_message_callback($form, $form_sate) {
+  $commands = array();
+  $commands[] = array("command" => 'hidePopup', 'name' => 'shareModal');
+  $commands[] = ajax_command_replace('#alertClose', get_popup_markup('alertClose', 'Thank you for your feedback!'));
+  $commands[] = array("command" => 'showPopup', 'name' => 'alertClose');
+  $commands[] = array("command" => 'hidePopup', 'name' => 'alertClose', 'time' => 3000);
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+function share_send_message_submit($form, &$form_state) {
+  // TODO: increase content rating and other logic
+  if(isset($_SESSION['ask_flow']['search_term'])) {
+    // this means the user probably found the answer
+    // unset search term and suggestions from session
+    search_success_update($form_state['values']['node_id']);
+  }
+  else {
+    // content shared without a search
+    // TODO update content radioactivity?
+  }
+}
+
+function action_favorite_callback($form, $form_sate) {
+  $commands = array();
+  // TODO handle favorite callback
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+function action_favorite_submit($form, &$form_sate) {
+  // TODO handle favorite submit
+}
+
+function users_in_group($gid) {
+  // get all users in this group and return as options
+  // use api if exists; query for now
+  $options = array();
+  $query = db_select('ticketing_group_membership', 'tgm');
+  $query->join('users', 'u', 'u.uid = tgm.uid');
+  $query->fields('u', array('uid', 'mail'));
+  $query->condition('tgm.gid', $gid, '=');
+  $res = $query->execute();
+  while($r = $res->fetchAssoc()) {
+    $options[$r['mail']] = $r['mail'];
+  }
+  return $options;
+}

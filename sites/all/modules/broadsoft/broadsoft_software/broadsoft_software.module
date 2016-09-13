@@ -1,0 +1,593 @@
+<?php
+
+use Drupal\amazons3\S3Client;
+//include_once 'includes\S3BucketStreamZip';
+//include_once 'includes\Exception\InvalidParameterException';
+
+DEFINE('S3_BUCKET_NAME', 'file-storage-100');
+
+/**
+ * NOTE:
+ * there are hardcoded field names
+ * need to set Tmp dir path
+ */
+
+include_once('broadsoft_software.extra.php');
+
+/**
+ * Implementation of hook_permission().
+ * Valid permissions for this module
+ *
+ * @return array An array of valid permissions for the broadsoft lost password module
+ */
+function broadsoft_software_permission() {
+  return array(
+    'enable broadsoft download software' => array(
+      'title' => t('Broadsoft download software'),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_node_operations().
+ */
+function broadsoft_software_node_operations() {
+  return array(
+    'broadsoft_software_download' => array(
+      'label' => 'Download Patches',
+      'callback' => 'download_software',
+      'behavior' => array('views_node_property'),
+    ),
+  );
+}
+
+/**
+ * Returns the tid of a serverType
+ */
+function getServerTidFromName($serverType) {
+  /*$query = "SELECT *
+            FROM term_data, vocabulary 
+            WHERE term_data.name = :stype
+              AND term_data.vid = vocabulary.vid 
+              AND vocabulary.name = 'BroadWorks Component' ";
+  $line = db_query($query, array(':stype' => $serverType))->fetchAssoc();
+  if (!is_array($line)) {
+    return '';
+  }
+  return $line['tid'];*/
+  $term = taxonomy_get_term_by_name($serverType, 'broadworks_component');
+  $tid = reset($term)->tid;
+  if(!$tid) {
+    return '';
+  }
+  return $tid;
+}
+
+function getBundleFileSuffix($osStr, $releaseStr) {
+  $file_suffix = '';
+  $solarisString = 'Solaris';
+  if (preg_match('/R14/', $releaseStr) || preg_match('/R15[.]0/', $releaseStr)) {
+    $solarisString = 'sol9';
+  }
+
+  switch ($osStr) {
+    case 'Linux/Red Hat':
+      $file_suffix = 'Linux-x86_64.zip';
+      break;
+    case 'Solaris/x86':
+      $file_suffix = $solarisString . '-x86_64.zip';
+      break;
+    default:
+      $file_suffix = $solarisString . '-sparc.zip';
+      break;
+  }
+  return $file_suffix;
+}
+
+
+/**
+ * Can take either:
+ * - the full path & file name
+ * - the file fid
+ * Just put NULL to the other one. If both are provided, fid will be prioritized
+ */
+function streamFileAndExit($fileFullPath, $fid = 0) {
+  global $user;
+  //$fileFullPath = '';
+
+  if (userIsAdministrator()) {
+    $verboseOverride = TRUE;
+  }
+  else {
+    $verboseOverride = FALSE;
+  }
+
+  if ($fid != 0) {
+    $record = db_query("SELECT uri FROM file_managed WHERE fid = :fid ", array(':fid' => $fid))->fetchAssoc();
+    if (is_array($record)) {
+      $fileFullPath = drupal_realpath($record['uri']);
+    }
+  }
+
+  if (!empty($fileFullPath)) {
+    DebugPrint2("Streaming file: " . $fileFullPath, $verboseOverride);
+
+    header("Content-type: application/zip");
+    header("Content-Disposition: inline; filename=" . basename($fileFullPath));
+    header("Pragma: no-cache");
+    header("refresh:5");
+    header("Expires: 0");
+    header('Content-Length: ' . filesize($fileFullPath));
+    ob_clean();
+    flush();
+
+    // split in chunks only if looks too big (about 200 Mb or so... some testing would be needed here)
+    $sizeLimit_bytes = 200 * (/* 1 MB */
+        1024 * 1024);
+    $size_bytes = intval(sprintf("%u", filesize($fileFullPath)));
+
+    if ($size_bytes > $sizeLimit_bytes) {
+      // If it's a large file, readfile might not be able to do it in one go, so:
+      $chunksize = 10 * (/* 1 MB */
+          1024 * 1024); // how many bytes per chunk
+      $handle = fopen($fileFullPath, 'rb');
+      $buffer = '';
+
+      while (!feof($handle)) {
+        $buffer = fread($handle, $chunksize);
+        echo $buffer;
+        ob_flush();
+        flush();
+      }
+
+      fclose($handle);
+    }
+    else {
+      readfile($fileFullPath);
+    }
+  }
+
+  exit;
+}
+
+
+/**
+ * If only one patch in array: does nothing...
+ *** NOT USED NOW BUT TESTED ***
+ */
+function createCustomBundleZip($patchBundleName, $bundleID, $outputFileFullPath, $patchFilePathsArr) {
+  $tmpSrcDir = dirname($outputFileFullPath) . '/';
+  global $user;
+
+  if (count($patchFilePathsArr) == 1) {
+    return;
+  }
+
+  $zip = new ZipArchive();
+  if ($zip->open($outputFileFullPath, ZipArchive::CREATE) !== TRUE) {
+    die("cannot open <$outputFileFullPath>\n");
+  }
+  else {
+    DebugPrint2("Creating custom bundle: " . $outputFileFullPath);
+  }
+
+  $patchList = "";
+
+  $firstPass = TRUE;
+  foreach ($patchFilePathsArr as $patchFile) {
+    $patchName = preg_replace('/[.](sol|lin).*/i', '', basename($patchFile));
+    if ($firstPass) {
+      $patchList = $patchName;
+      $firstPass = FALSE;
+    }
+    else {
+      $patchList .= ' ' . $patchName;
+    }
+    DebugPrint2("... adding patch: " . basename($patchFile));
+    $zip->addFile($patchFile, basename($patchFile));
+  }
+
+  $conFile = $patchBundleName . '.conf';
+  $fh = fopen($tmpSrcDir . $conFile, 'w') or die("can't open file");
+  fwrite($fh, "ID=" . $bundleID . "\n");
+  fwrite($fh, "Author=" . $user->mail . "\n");
+  fwrite($fh, "Description=This is configuration file for patch bundle $patchBundleName" . "\n");
+  fwrite($fh, "Patches=" . $patchList . "\n");
+  fclose($fh);
+
+  $zip->addFile($tmpSrcDir . $conFile, $conFile);
+  $zip->close();
+}
+
+
+/**
+ * This is the function handling custom patch bundle building
+ * Returns the software to download.
+ *
+ * @param array $accounts
+ */
+function download_software($software_list, $view, $unknownArr, $releaseStr = '', $osTid = 0, $bundleID = '', $serverTid = 0) {
+  set_time_limit(600);// 10 min. Note: set_time_limit() is indeed just a convenience wrapper around the according ini_set()
+  $stats = array();
+  $stats['nb_patches_requested'] = count($software_list);
+
+  if (count($software_list) == 0) {
+    return;
+  }
+  $startTimeMS = broadsoft_profiler_startTimer(TRUE, PROFILING_STAT___FUNCTION__, $broadsoft_profiler_id);
+
+  global $user;
+  if (userIsAdministrator()) {
+    $verboseOverride = TRUE;
+  }
+  else {
+    $verboseOverride = FALSE;
+  }
+
+  DebugPrint2("Into download_software", $verboseOverride);
+  DebugPrint2("software_list = [" . implode(",", $software_list) . "]", $verboseOverride);
+
+  // TODO: need to set Tmp ditectory path
+  $tmpSrcDir = "/var/broadworks/xchangeRepos/tmp/";
+  $turi = 'public://BSoftware/temp';
+  file_prepare_directory($turi, FILE_CREATE_DIRECTORY);
+  $tmpSrcDir = drupal_realpath($turi);
+
+  $filters = $_SESSION['views']['software_download_center']['default'];
+  if ($serverTid == 0) {
+    $serverTid = $filters['server'];
+  }
+
+  if (is_array($releaseStr) || strlen($releaseStr) == 0) {
+    $releaseStr = taxonomy_term_load($filters['release'])->name;
+  }
+
+  if ($osTid <= 0) {
+    $osTid = $filters['os'];
+  }
+
+  $os = taxonomy_term_load($osTid)->name;
+
+  $file_suffix = getBundleFileSuffix($os, $releaseStr);
+
+  // TODO: hardcoded field names
+  $fid_field_name = '';
+  switch ($os) {
+    case 'Linux/Red Hat':
+      $fid_field_name = 'field_linux_rh_patch_file_fid';
+      break;
+    case 'Solaris/x86':
+      $fid_field_name = 'field_solaris_x86_patch_file_fid';
+      break;
+    default:
+      $fid_field_name = 'field_solaris_sparc_patch_file_fid';
+      break;
+  }
+
+  $stats['release'] = $releaseStr;
+  $stats['os'] = $os;
+
+  $maxApplicablePatches = 0;
+  $tmpArray = taxonomy_get_term_by_name($releaseStr);
+  if (count($tmpArray)) {
+    $releaseTid = reset($tmpArray)->tid;
+    $statement = "SELECT count(node.nid) as count 
+                  FROM {node} node, {taxonomy_index} term_node1, {taxonomy_index} term_node2, {taxonomy_index} term_node3 
+                  WHERE node.type = 'broadworks_patch'
+                   AND node.status = 1 
+                   AND term_node1.tid = :stid  
+                   AND term_node2.tid = :otid  
+                   AND term_node3.tid = :rtid
+                   AND term_node1.nid = node.nid  
+                   AND term_node2.nid = node.nid  
+                   AND term_node3.nid = node.nid ";
+    $record = db_query($statement, array(':stid' => $serverTid, ':otid' => $osTid, ':rtid' => $releaseTid))->fetchAssoc();
+    $maxApplicablePatches = $record['count'];
+    $stats['nb_patches_available'] = $maxApplicablePatches;
+  }
+  $stats['nb_patches_available'] = $maxApplicablePatches;
+
+  // TODO: 'content_type_broadworks_patch' not exists at D7
+  $file_field = rtrim('field_data_'.$fid_field_name, '_fid');
+  $statement = "SELECT node.title, files.filename, uri AS filepath, node.nid, files.fid, node.vid  
+                FROM {node}, {file_managed} files, ".$file_field." ff
+                WHERE node.nid IN ( :software_list )
+                    AND node.type = 'broadworks_patch'
+                    AND node.nid = ff.entity_id
+                    AND fid = ff.".$fid_field_name;
+  $result = db_query($statement, array(':software_list' => implode(',', $software_list)));
+
+  $outputFileName = "";
+  $outputFileFullPath = "";
+  $firstPass = TRUE;
+  $zip = NULL;
+  $patchList = "";
+  $patchBundleName = NULL;
+  $download_count_data = array();
+
+  // Create a folder in S3
+  /*$s3 = Drupal\amazons3\S3Client::factory();
+  $s3->putObject(array(
+    'Bucket' => S3_BUCKET_NAME,
+    'Key'    => "patch_advisor_download/",
+    'Body'   => "",
+    'ACL'    => 'public-read'
+  ));*/
+  // copy all selected patch files to the above folder
+
+  // the following code can go wrong if the file gets too big or other disk-os related issues
+  try {
+    foreach ($result as $record) {
+      if (count($software_list) == 1) {
+        $outputFileName = $record->filename;
+        $outputFileFullPath = drupal_realpath($record->filepath);
+        /*$response = $s3->copy_object(
+          array(
+            'bucket'   => S3_BUCKET_NAME,
+            'filename' => str_replace('s3://'.S3_BUCKET_NAME.'/', '', $record->filepath)
+          ),
+          array(
+            'bucket'   => S3_BUCKET_NAME,
+            'filename' => 'patch_advisor_download/'.str_replace('s3://'.S3_BUCKET_NAME.'/', '', $record->filepath)
+          )
+        );*/
+        DebugPrint2("Bundling a single patch: " . $record->filepath, $verboseOverride);
+      }
+      else {
+        if ($firstPass) {
+          // PB.as.17.0.458.pb20100823213701.Solaris-x86_64.zip
+          // AP.as.17.0.458.ap69505
+          $components = preg_split('/\./', $record->title);
+          if (strlen($bundleID) == 0) {
+            $bundleID = date("Ymd") . rand(10000, 99999);
+          }
+
+          if ($serverTid == 89) {
+            $serverName = "cds";
+          } // in DB, is CDS/URSS or something similar
+          else {
+            $serverName = strtolower(taxonomy_term_load($serverTid)->name);
+          }
+
+          $patchBundleName = 'PB.' . $serverName . '.' . $components[2] . '.' . $components[3] . '.' . $components[4] . '.pb' . $bundleID;
+          $outputFileName = $patchBundleName . '.' . $file_suffix;
+          $outputFileFullPath = $tmpSrcDir . $outputFileName;
+          $patchList = $record->title;
+
+          $zip = new ZipArchive();
+
+          DebugPrint2("Creating bundle zip: " . $outputFileFullPath, $verboseOverride);
+          if ($zip->open($outputFileFullPath, ZipArchive::CREATE) != TRUE) {
+            DebugPrint2("************** ERROR ERROR ERROR ERROR **************", $verboseOverride);
+            DebugPrint2("cannot create <$outputFileFullPath>", $verboseOverride);
+            DebugPrint2("Error String: " . $zip->getStatusString(), $verboseOverride);
+            DebugPrint2("************** ERROR ERROR ERROR ERROR **************", $verboseOverride);
+            throw new Exception('cannot create <$outputFileFullPath>');
+          }
+        }
+        else {
+          $patchList .= ' ' . $record->title;
+        }
+        //copy file from S3 to temp folder
+        /*$response = $s3->copy_object(
+          array(
+            'bucket'   => S3_BUCKET_NAME,
+            'filename' => str_replace('s3://'.S3_BUCKET_NAME.'/', '', $record->filepath)
+          ),
+          array(
+            'bucket'   => S3_BUCKET_NAME,
+            'filename' => 'patch_advisor_download/'.str_replace('s3://'.S3_BUCKET_NAME.'/', '', $record->filepath)
+          )
+        );*/
+        DebugPrint2("Adding file to custom bundle: " . $record->filepath, $verboseOverride);
+        if ($verboseOverride) {
+          if (!is_readable(drupal_realpath($record->filepath))) {
+            DebugPrint2("************** ERROR ERROR ERROR ERROR **************", $verboseOverride);
+            DebugPrint2("File is NOT readable?? " . $record->filepath, $verboseOverride);
+            DebugPrint2("************** ERROR ERROR ERROR ERROR **************", $verboseOverride);
+          }
+          else {
+            DebugPrint2("File is readable and has size: " . filesize($record->filepath), $verboseOverride);
+          }
+        }
+        if ($zip->addFile(drupal_realpath($record->filepath), $record->filename) != TRUE) {
+          DebugPrint2("************** ERROR ERROR ERROR ERROR **************", $verboseOverride);
+          DebugPrint2("... Zip Add FAILED for above file", $verboseOverride);
+          DebugPrint2("Error String: " . $zip->getStatusString(), $verboseOverride);
+          DebugPrint2("************** ERROR ERROR ERROR ERROR **************", $verboseOverride);
+        }
+      }
+      $firstPass = FALSE;
+      $download_count_data[] = array(
+        'fid' => $record->fid,
+        'nid' => $record->nid,
+        'vid' => $record->vid
+      );
+    } // end of foreach
+
+    if ($zip != NULL) {
+      $conFile = $patchBundleName . '.conf';
+      $fh = fopen($tmpSrcDir . $conFile, 'w');
+      if (!$fh) {
+        throw new Exception("can't open file");
+      }
+      fwrite($fh, "ID=" . $bundleID . "\n");
+      fwrite($fh, "Author=" . $user->mail . "\n");
+      fwrite($fh, "Description=This is configuration file for patch bundle $patchBundleName" . "\n");
+      fwrite($fh, "Patches=" . $patchList . "\n");
+      fclose($fh);
+
+      DebugPrint2("Adding file to custom bundle: " . $tmpSrcDir . $conFile, $verboseOverride);
+      if (!$zip->addFile($tmpSrcDir . $conFile, $conFile)) {
+        DebugPrint2("************** ERROR ERROR ERROR ERROR **************", $verboseOverride);
+        DebugPrint2("... Zip Add FAILED for above file", $verboseOverride);
+        DebugPrint2("Error String: " . $zip->getStatusString(), $verboseOverride);
+        DebugPrint2("************** ERROR ERROR ERROR ERROR **************", $verboseOverride);
+      }
+
+      if (!$zip->close()) {
+        DebugPrint2("************** ERROR ERROR ERROR ERROR **************", $verboseOverride);
+        DebugPrint2("... Zip Close FAILED", $verboseOverride);
+        DebugPrint2("Error String: " . $zip->getStatusString(), $verboseOverride);
+        DebugPrint2("************** ERROR ERROR ERROR ERROR **************", $verboseOverride);
+      }
+    }
+    else {
+      if (count($software_list) > 1) {
+        DebugPrint2("************** ERROR ERROR ERROR ERROR **************", $verboseOverride);
+        DebugPrint2("Zip is NULL?", $verboseOverride);
+        DebugPrint2("Error String: " . $zip->getStatusString(), $verboseOverride);
+        DebugPrint2("************** ERROR ERROR ERROR ERROR **************", $verboseOverride);
+      }
+    }
+
+    for ($i = 0; $i < count($download_count_data); $i++) {
+
+      db_insert('download_count')
+        ->fields(array(
+          'fid' => $download_count_data[$i]['fid'],
+          'id' => $download_count_data[$i]['nid'],
+          'uid' => $user->uid,
+          'ip_address' => ip_address(),
+          'referrer' => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : NULL,
+          'timestamp' => time(),
+        ))
+        ->execute();
+
+      watchdog('download_count', '%file was downloaded', array('%file' => $patchBundleName), WATCHDOG_NOTICE);
+    }
+  } catch (Exception $e) {
+    // add to stat
+    $stats['error'] = $e->getMessage();
+  }
+
+  // TODO: unknown variable
+  $stats['server'] = $serverName;
+  $stats['bundle_filename'] = $outputFileFullPath;
+  if (isset($e)) {
+    broadsoft_statistics_addStat('CustomBundleCreation', $stats);
+    die ($e->getMessage());
+  }
+  else {
+    $stats['bundle_file_size'] = filesize($outputFileFullPath);
+    broadsoft_statistics_addStat('CustomBundleCreation', $stats);
+    // TODO stream from S3
+    // use files in includes folder
+    /*$stream = new S3BucketStreamZip(
+      array(
+        'key'     => variable_get('amazons3_key'),
+        'secret'  => variable_get('amazons3_secret')
+      ),
+      array(
+        'Bucket'  => S3_BUCKET_NAME,
+        'Prefix'  => 'patch_advisor_download/'   // path to folder to stream
+      )
+    );
+    $stream->send('missing_patches.zip');*/
+
+    streamFileAndExit($outputFileFullPath);
+  }
+  broadsoft_profiler_logElapsedTime($startTimeMS, "function", $broadsoft_profiler_id);
+}
+
+/**
+ * Returns the software to download.
+ *
+ * @param array $accounts
+ */
+function download_custom_bundle($software_list, $osTid, $outputFileFullPath, $bundleID) {
+  global $user;
+  $startTimeMS = broadsoft_profiler_startTimer(TRUE, PROFILING_STAT___FUNCTION__, $broadsoft_profiler_id);
+
+  // TODO: need to set Tmp ditectory path
+  $tmpSrcDir = "/var/broadworks/xchangeRepos/tmp/";
+  $os = taxonomy_term_load($osTid)->name;
+
+  // TODO: hardcoded field names
+  $fid_field_name = '';
+  switch ($os) {
+    case 'Linux/Red Hat':
+      $fid_field_name = 'field_linux_rh_patch_file_fid';
+      break;
+    case 'Solaris/x86':
+      $fid_field_name = 'field_solaris_x86_patch_file_fid';
+      break;
+    default:
+      $fid_field_name = 'field_solaris_sparc_patch_file_fid';
+      break;
+  }
+
+  // TODO: 'content_type_broadworks_patch' not exists at D7
+  $statement = "SELECT node.title, files.filename, filepath, node.nid, files.fid, node.vid 
+                FROM {node}, {file_managed} AS files, {content_type_broadworks_patch} 
+                WHERE content_type_broadworks_patch.nid IN ( :software_list ) 
+                  AND node.nid=content_type_broadworks_patch.nid  
+                  AND fid = :fname ";
+  $result = db_query($statement, array(':software_list' => implode(',', $software_list), ':fname' => $fid_field_name));
+
+  $outputFileName = basename($outputFileFullPath);
+  $firstPass = TRUE;
+  $zip = NULL;
+  $patchList = "";
+  $patchBundleName = NULL;
+  $download_count_data = array();
+  $patchBundleName = preg_replace('/[.](sol|lin).*/i', '', $outputFileName);
+
+  foreach ($result as $record) {
+    if ($firstPass) {
+      // PB.as.17.0.458.pb20100823213701.Solaris-x86_64.zip
+      // AP.as.17.0.458.ap69505
+      $patchList = $record->title;
+
+      $zip = new ZipArchive();
+      DebugPrint2("Creating bundle zip: " . $outputFileFullPath);
+
+      if ($zip->open($outputFileFullPath, ZipArchive::CREATE) !== TRUE) {
+        die("cannot open <$outputFileName>\n");
+      }
+    }
+    else {
+      $patchList .= ' ' . $record->title;
+    }
+    $zip->addFile($record->filepath, $record->filename);
+    $firstPass = FALSE;
+    $download_count_data[] = array(
+      'fid' => $record->fid,
+      'nid' => $record->nid,
+      'vid' => $record->vid
+    );
+  } // end of while
+
+  if ($zip != NULL) {
+    $conFile = preg_replace('/[.](sol|lin).*/i', '', $outputFileName) . '.conf';
+    $fh = fopen($tmpSrcDir . $conFile, 'w') or die("can't open file");
+    fwrite($fh, "ID=" . $bundleID . "\n");
+    fwrite($fh, "Author=" . $user->mail . "\n");
+    fwrite($fh, "Description=This is configuration file for patch bundle $patchBundleName" . "\n");
+    fwrite($fh, "Patches=" . $patchList . "\n");
+    fclose($fh);
+
+    $zip->addFile($tmpSrcDir . $conFile, $conFile);
+    $zip->close();
+  }
+
+  for ($i = 0; $i < count($download_count_data); $i++) {
+
+    db_insert('download_count')
+      ->fields(array(
+        'fid' => $download_count_data[$i]['fid'],
+        'id' => $download_count_data[$i]['nid'],
+        'uid' => $user->uid,
+        'ip_address' => ip_address(),
+        'referrer' => isset($_SERVER['HTTP_REFERER']) ? $_SERVER['HTTP_REFERER'] : NULL,
+        'timestamp' => time(),
+      ))
+      ->execute();
+
+    watchdog('download_count', '%file was downloaded', array('%file' => $patchBundleName), WATCHDOG_NOTICE);
+  }
+  broadsoft_profiler_logElapsedTime($startTimeMS, "function", $broadsoft_profiler_id);
+
+  streamFileAndExit($outputFileFullPath);
+}
+

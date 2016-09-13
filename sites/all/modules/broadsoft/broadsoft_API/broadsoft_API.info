@@ -1,0 +1,7 @@
+; $Id:
+name = BroadSoft API
+description = Provide API-related custom code
+package = "Broadsoft"
+project = "Broadsoft"
+version = "7.0"
+core = "7.x"

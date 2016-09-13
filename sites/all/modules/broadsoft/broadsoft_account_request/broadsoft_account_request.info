@@ -1,0 +1,6 @@
+name = Broadsoft Account Request
+description = Creates a form for a user to submit an account request
+package = "Broadsoft"
+project = "Broadsoft"
+version = "7.0"
+core = "7.x"

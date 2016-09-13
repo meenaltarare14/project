@@ -1,0 +1,19 @@
+.hideCoverClass {
+    position:fixed;
+    top:0;
+    left:0;
+    background-color:white;
+    height:100%;
+    width:100%;
+    opacity:0.5;
+ 	z-index:10;    
+    filter:alpha(opacity=50);
+    text-align:center;
+}
+.hideCoverClass > img {
+    position:relative;
+    top: 10ex;
+}
+.hiddenCoverClass {
+    visibility: hidden;
+}

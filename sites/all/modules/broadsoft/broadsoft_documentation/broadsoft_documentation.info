@@ -1,0 +1,7 @@
+; $Id:
+name = BroadSoft Documentation
+description = All PDF extraction related code implementations is here
+package = "Broadsoft"
+project = "Broadsoft"
+version = "7.0"
+core = "7.x"

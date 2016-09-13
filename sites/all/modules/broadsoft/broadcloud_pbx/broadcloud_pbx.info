@@ -1,0 +1,7 @@
+; $Id:
+name = BroadCloud PBX Knowledge Base
+description = Provides utilities used SPECIFICALLY for the BroadCloud PBX site
+package = "Broadsoft"
+project = "Broadsoft"
+version = "7.0"
+core = "7.x"

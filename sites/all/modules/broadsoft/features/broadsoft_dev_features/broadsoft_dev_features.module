@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the Broadsoft dev features feature.
+ */
+
+include_once 'broadsoft_dev_features.features.inc';

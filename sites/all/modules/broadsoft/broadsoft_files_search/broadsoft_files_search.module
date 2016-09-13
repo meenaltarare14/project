@@ -1,0 +1,128 @@
+<?php
+
+/**
+ * Implements hook_menu().
+ */
+function broadsoft_files_search_menu()
+{
+  $items = array();
+  $items['admin/config/search/broadsoft_files_search'] = array(
+    'title' => 'Broadsoft Files Search',
+    'description' => 'Configure SOLR for files search.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('broadsoft_files_search_admin'),
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'broadsoft_files_search.admin.inc',
+  );
+  $items['broadsoft_files_search'] = array(
+    'title' => 'Broadsoft Files Search',
+    'description' => 'Allows to search through files indexed in SOLR.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('broadsoft_files_search_form'),
+    'access arguments' => array('administer site configuration'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+  $items['broadsoft_search/autocomplete'] = array(
+    'page callback' => 'broadsoft_files_search_autocomplete',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK
+  );
+  return $items;
+}
+
+function broadsoft_files_search_form($form, &$form_state) {
+  $form = array();
+  drupal_add_js(drupal_get_path('module', 'broadsoft_files_search').'/broadsoft_files_search.js', 'file');
+  $form['search_term'] = array(
+    '#id' => 'search_term',
+    '#type' => 'textfield',
+    '#title' => 'Enter search term',
+    '#attributes' => array('id' => array('search-auto'))
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => 'search'
+  );
+  $form['autocomplete_results'] = array(
+    '#prefix' => '<div class="suggestion-list hide">',
+    '#markup' => '<div class="inner"><h3>We think these resources could help:</h3><ul class="list-contents"></ul><a class="see-more" href="broadsoft_files_search" title="">See more <i class="fa fa-angle-right" aria-hidden="true"></i></a></div>',
+    '#suffix' => '</div>',
+
+  );
+  if(!empty($form_state['results'])) {
+    $form['result_set'] = array(
+      '#type' => 'fieldset',
+      '#collapsible' => false,
+    );
+    $form['result_set']['result_count'] = array(
+      '#prefix' => '<div>',
+      '#markup' => ($form_state['results']['response']['numFound']). ' '. t('results'),
+      '#suffix' => '</div>',
+    );
+    $i = 0;
+    foreach($form_state['results']['response']['docs'] as $item) {
+      $form['result_set']['doc'.$i++] = array(
+        '#prefix' => '<div>',
+        '#markup' => '<h3>'.$item['title'][0].'</h3>'.
+      '<div>'.$item['content'][0].'</div>'.
+        '<a href="index.php?file='.$item['file_s'].'#page_'.$item['page_i'].'">'.$item['file_s'].'</a>',
+        '#suffix' => '</div>',
+      );
+    }
+
+  }
+  return $form;
+}
+
+function broadsoft_files_search_form_submit($form, &$form_state) {
+  $search_term = $form_state['values']['search_term'];
+  $re = query_solr($search_term);
+  $form_state['results'] = $re;
+  $form_state['rebuild'] = TRUE;
+}
+
+function query_solr($term) {
+  $ch = curl_init();
+  $term = urlencode($term);
+  $query = variable_get("broadsoft_solr_server").variable_get("broadsoft_solr_query");
+  $query = str_replace('[term]', $term, $query);
+  curl_setopt($ch, CURLOPT_URL, $query);
+  curl_setopt($ch, CURLOPT_HEADER, false);
+  curl_setopt ($ch, CURLOPT_RETURNTRANSFER, true);
+  $re = curl_exec($ch);
+  if(curl_error($ch))
+  {
+    curl_close($ch);
+    return NULL;
+  }
+  curl_close($ch);
+  $arr = array();
+  eval("\$arr = " . $re . ";");
+  return $arr;
+}
+
+function broadsoft_files_search_autocomplete($term = '') {
+  if(strlen($term) == 0 && isset($_GET['term'])) {
+    $term = $_GET['term'];
+  }
+  if(strlen($term) < 3) return;
+  $php = query_solr($term);
+  $arr = array();
+  $i = 0;
+  foreach($php['response']['docs'] as $item) {
+    if($i > 3) break;
+    $arr[] = array(
+      'title' => $item['title'],
+      'text' => strlen($item['content'][0]) > 100 ? substr($item['content'][0], 0, 100).'...' : $item['content'][0],
+      'file' => $item['file_s'],
+      'url' => 'http://cshp.getventive.com/pdftohtml/www/index.php?file='.$item['file_s'].'#page_'.$item['page_i'],
+    );
+    $i++;
+  }
+  echo drupal_json_encode($arr);
+}
+
+function search_files_redirect_handler(&$form, &$form_state) {
+  $form_state['redirect'] = '/broadsoft_files_search';
+}

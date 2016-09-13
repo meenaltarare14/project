@@ -1,0 +1,130 @@
+<?php
+
+//include("broadsoft_patch_advisor.module.extra");
+
+/**
+ * Implements hook_install().
+ */
+function broadworks_patch_advisor_install() {
+  global $ADVISOR_ROOT_DIR;
+  if (!is_dir($ADVISOR_ROOT_DIR)) {
+    mkdir($ADVISOR_ROOT_DIR);
+  }
+  
+  node_types_rebuild();
+  $types = node_type_get_types();
+  node_add_body_field($types['broadworks_patch_advisor']);
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function broadworks_patch_advisor_uninstall() {
+  drupal_uninstall_schema('broadworks_patch_advisor');
+}
+
+/**
+ * Implements hook_schema().
+ */
+function broadworks_patch_advisor_schema() {
+  $schema['broadworks_patch_advisor'] = array(
+    'module' => 'broadworks_patch_advisor',
+    'description' => t("Stores information for node of type 'broadworks_patch_advisor'."),
+    'fields' => array(
+      'tsid' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => t("A unique tech-support id."),
+      ),
+      'uid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => t("An xchange {users}.uid."),
+      ),
+      'timestamp' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => t("The date on which the tech-support was uploaded."),
+      ),
+      'filename' => array(
+        'type' => 'varchar',
+        'length' => 60,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => t('The name of a tech-support file.'),
+      ),
+      'path' => array(
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+        'description' => t('The path to an uploaded tech-support file.'),
+      ),
+      // alter table broadworks_patch_advisor add column hostname varchar(125) not null Default 'unknown';
+      'hostname' => array(
+        'type' => 'varchar',
+        'length' => 125,
+        'not null' => TRUE,
+        'default' => 'unknown',
+        'description' => t('The hostname as taken from the tech-support file.'),
+      ),
+      'status' => array(
+        'type' => 'varchar',
+        'length' => 12,
+        'not null' => TRUE,
+        'default' => 'In Queue',
+        'description' => t('The status of the uploaded tech-support file.'),
+      ),
+      'customerid' => array(
+        'type' => 'varchar',
+        'length' => 8,
+        'not null' => FALSE,
+        'description' => t('Customer ID found in the file.'),
+      ),
+      'serviceusage' => array(
+        'type' => 'int',
+        'length' => 1,
+        'not null' => FALSE,
+        'default' => 0,
+        'description' => t('Is Service Usage.'),
+      ),
+      'bwrelease' => array(
+        'type' => 'varchar',
+        'length' => 10,
+        'not null' => FALSE,
+        'description' => t('BW Release.'),
+      ),
+      'servertype' => array(
+        'type' => 'varchar',
+        'length' => 10,
+        'not null' => FALSE,
+        'description' => t('BW Server type (as, xs, etc...).'),
+      ),
+      'os' => array(
+        'type' => 'varchar',
+        'length' => 16,
+        'not null' => FALSE,
+        'description' => t('Cluster OS.'),
+      ),
+      'ticketid' => array(
+        'type' => 'varchar',
+        'length' => 14,
+        'not null' => FALSE,
+        'description' => t('Ticket ID found in the file.'),
+      ),
+
+    ),
+    'primary key' => array('tsid'),
+    'unique keys' => array(),
+    'indexes' => array(
+      'user_uid' => array('uid')
+    ),
+  );
+
+  return $schema;
+}

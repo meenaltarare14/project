@@ -1,0 +1,13 @@
+<?php
+
+/** =============================================================================================
+*/
+function broadcloud_pbx_uninstall() {
+  variable_del('broadcloud_pbx_Enable_Email_Notification');
+  variable_del('broadcloud_pbx_Email_Address');
+  variable_del('broadcloud_pbx_Notify_On_Creation');
+  variable_del('broadcloud_pbx_Notify_On_Update');
+  variable_del('broadcloud_pbx_Notify_On_Unmanaged');
+}
+
+?>

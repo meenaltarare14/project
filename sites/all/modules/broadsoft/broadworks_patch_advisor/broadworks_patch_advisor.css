@@ -1,0 +1,9 @@
+.wrappedrow td {
+    border-top: 1px solid #000;
+    border-bottom: 1px solid #000;
+    padding: 0.4em;
+}  
+
+.page-patchadvisor section.main {
+	padding: 10px 10px;
+}

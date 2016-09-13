@@ -1,0 +1,377 @@
+<?php
+
+/*---------------------------------------------------------------------------------------
+
+--------------------------------------------------------------------------------------
+                                broadsoft_API
+                                     module
+  https://home.unite.broadsoft.com/display/IS/Xchange+Custom+API+and+Export+Buttons
+
+--------------------------------------------------------------------------------------
+Need to allow url "API" in token auth module settings
+- slapierre's token:
+- http://10.1.1.33/php/xchange2/api?action=get_account_group_data&output=browser&format=xml&token=hhqpNHaVeWgvvQHU
+- http://10.1.1.33/php/xchange2/api?action=get_account_group_data&output=browser&format=csv&token=hhqpNHaVeWgvvQHU
+- http://10.1.1.33/php/xchange2/api?action=get_latest_account_group_update_timestamp&output=browser&token=hhqpNHaVeWgvvQHU
+michel browser: - http://10.1.1.33/php/xchange2/api?action=get_account_group_data&output=browser&format=csv&token=T6yMxKjG74reeZi3
+michel file: - http://10.1.1.33/php/xchange2/api?action=get_account_group_data&output=file&format=csv&token=T6yMxKjG74reeZi3
+
+
+- https://xchangeserver0.broadsoft.com/php/xchange/api?action=get_account_group_data&output=browser&format=xml&token=hhqpNHaVeWgvvQHU
+- https://xchangeserver0.broadsoft.com/php/xchange/api?action=get_account_group_data&output=browser&format=csv&token=hhqpNHaVeWgvvQHU
+- https://xchangeserver0.broadsoft.com/php/xchange/api?action=get_latest_account_group_update_timestamp&output=browser&token=hhqpNHaVeWgvvQHU
+
+for michel tremblay:
+- https://xchangeserver0.broadsoft.com/php/xchange/api?action=get_account_group_data&output=browser&format=xml&token=T6yMxKjG74reeZi3
+- https://xchangeserver0.broadsoft.com/php/xchange/api?action=get_account_group_data&output=browser&format=csv&token=T6yMxKjG74reeZi3
+- https://xchangeserver0.broadsoft.com/php/xchange/api?action=get_account_group_data&output=file&format=xml&token=T6yMxKjG74reeZi3
+- https://xchangeserver0.broadsoft.com/php/xchange/api?action=get_account_group_data&output=file&format=csv&token=T6yMxKjG74reeZi3
+- https://xchangeserver0.broadsoft.com/php/xchange/api?action=get_latest_account_group_update_timestamp&output=browser&token=T6yMxKjG74reeZi3
+
+ --------------------------------------------------------------------------------------*/
+
+define("USE_API_PERMISSION",  "can use the BroadSoft custom API");
+
+/** =============================================================================================
+* Valid permissions for this module
+* @return An array of valid permissions for the broadsoft user management module
+*/
+function broadsoft_API_permission() {
+ return array(
+    USE_API_PERMISSION => array(
+      'title' => t(USE_API_PERMISSION),
+      'description' => t(USE_API_PERMISSION),
+    ),
+  );
+}
+
+/** =============================================================================================
+ * hook_menu() is called rarely, such as when modules are enabled.
+ * If you edit a module's hook_menu(), you must visit admin/build/modules for the changes to take effect.
+ */
+function broadsoft_API_menu() {
+  $items = array();
+
+  $items['api'] = array(
+    'title' => 'API call', // menu item name
+    'page callback' => 'api',
+    'access arguments' => array(USE_API_PERMISSION),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/** =============================================================================================
+* checks GET to figure out what to stream...
+*/
+function api_stream_file() {
+  $fid = 0;
+  if($_GET['eid']) {
+    $fid = api_decode_fid($_GET['eid']);
+  } elseif($_GET['fid']) {
+    $fid = $_GET['fid'];
+  }
+
+  if($fid) {
+    $filepath = broadsoft_utils_retreiveFilePathFromFID($fid);
+
+    header("Content-Description: File Transfer");
+    header("Content-Type: application/octet-stream");
+    header("Content-Disposition: attachment; filename=\"".basename($filepath)."\"");
+    header('Content-Length: ' . filesize($filepath));
+    readfile($filepath);
+    flush();
+    exit;
+  }
+}
+
+
+/** =============================================================================================
+  Security notes:
+
+  If this fct is called, we can be sure that:
+  - user is authenticated (either from a browser or from a token)
+  - user has USE_API_PERMISSION
+
+  Directly handles the get_file action
+*/
+function api() {
+  if(user_access(USE_API_PERMISSION)) { // works with currently logged-in user (implying mandatory authentification)
+    $curUrl = urldecode(request_uri());
+    // extract action -> maps directly to a fct call
+    // note that such functions need not be defined in this particular module...
+    $action = $_GET['action'];
+    if($action=='get_file') {
+      api_stream_file();
+    } elseif(function_exists($action)) {
+      // call action - as a fct name directly, giving GET as param array
+      $actionStr = $action($_GET);
+
+      if($_GET['output']=='browser') {
+        if(array_key_exists('format', $_GET) && $_GET['format']=='xml')
+          header('Content-type: text/xml');
+        return $actionStr;
+      } elseif($_GET['output']=='file') {
+        $format = 'txt'; // dflt
+        if(strlen($_GET['format']))
+          $format = $_GET['format'];
+        $fileName = $action.'.'.time().'.'.$format;
+        header("Content-Description: File Transfer");
+        header("Content-Type: application/octet-stream");
+        header("Content-Disposition: attachment; filename=\"$fileName\"");
+        header('Content-Length: ' . strlen($actionStr));
+        echo $actionStr;
+        flush();
+        exit;
+      }
+      return "Error (".__LINE__.")";
+    }
+    return "Error (".__LINE__.")";
+  } else
+    return "you do not have the permission to access this API";
+
+  return "Error (".__LINE__.")";
+}
+
+/** =============================================================================================
+* logic: to prevent a user from tapping all fids and getting all our docs,
+* we use the following encoding to make life hard for him
+*/
+function api_encode_fid($fid) {
+  global $user;
+  // use user id value and make the encoding expire on a daily basis
+  $dayOfYear = date('z');
+  return ($fid * ($dayOfYear + $user->uid));
+}
+function api_decode_fid($encoded_fid) {
+  global $user;
+  $dayOfYear = date('z');
+  $fid = ($encoded_fid / ($user->uid + $dayOfYear));
+  // valid fid?
+  if(broadsoft_utils_retreiveFilePathFromFID($fid))
+    return $fid;
+  return NULL;
+}
+
+
+/** =============================================================================================
+  $params must be a tag-val array: all will be added as &tag=val to api call
+*/
+function api_get_simple_button($buttonName, $action, $params, $mouseOverText = NULL) {
+  if(function_exists($action)) {
+    if(!array_key_exists('output', $params))
+      $params['output'] = 'browser';
+
+    $paramsStr = "";
+    foreach($params as $tag => $val)
+      $paramsStr .= '&'.$tag.'='.$val;
+
+    $retHtml = '<iframe id="apiinvisible_'.$action.'" style="display:none;"></iframe>';
+    $retHtml .= '<input class="form-submit" type="button" value="'.$buttonName.'"';
+    if($mouseOverText && strlen($mouseOverText))
+      $retHtml .= ' title="'.$mouseOverText.'"';
+    $retHtml .= ' onclick="var iframe=document.getElementById(\'apiinvisible_'.$action.'\');';
+    $retHtml .= 'iframe.src=\''.bs_get_site_base_path().'api?action='.$action.$paramsStr.'\'"';
+    $retHtml .= ' />';
+    return $retHtml;
+  } else {
+    return "API Button Error - pls contact support";
+  }
+}
+
+/** =============================================================================================
+  $params must be a tag-val array: all will be added as &tag=val to api call
+
+  $extraAPIParamJSFctName: this JS fct must have been added by caller & must return a string of the form (&tag=val)*
+
+  example usage in php:
+
+    print api_get_download_button('CSV Export', 'get_account_group_data', array('format'=>'csv'));
+    print api_get_download_button('XML Export', 'get_account_group_data', array('format'=>'xml'));
+
+*/
+function api_get_download_button($buttonName, $action, $params, $mouseOverText = NULL, $extraAPIParamJSFctName = NULL) {
+  if(function_exists($action)) {
+    $paramsStr = "";
+    foreach($params as $tag => $val)
+      if($tag!='output') // because explicitly added below
+        $paramsStr .= '&'.$tag.'='.$val;
+
+    $retHtml = '<iframe id="apiinvisible_'.$action.'" style="display:none;"></iframe>';
+    $retHtml .= '<input type="button" value="'.$buttonName.'"';
+    if($mouseOverText && strlen($mouseOverText))
+      $retHtml .= ' title="'.$mouseOverText.'"';
+    $retHtml .= ' onclick="
+      var extraAPIParams=\'\';
+      var iframe=document.getElementById(\'apiinvisible_'.$action.'\');';
+    if($extraAPIParamJSFctName)
+      $retHtml .= 'extraAPIParams += '.$extraAPIParamJSFctName.'();';
+    $retHtml .= '
+      iframe.src = \''.bs_get_site_base_path().'api?action='.$action.(array_key_exists('output', $params)?'&output=file':'').$paramsStr.'\'+extraAPIParams;
+    "';
+    $retHtml .= ' />';
+    return $retHtml;
+  } else {
+    return "API Button Error - pls contact support";
+  }
+}
+
+/** =============================================================================================
+ * Util fct
+ * only works if the array to dump has 2 levels
+*/
+function api_array2csv($array2dump) {
+  $resCSVStr = '';
+  $col2tag = array();
+
+  // first, gather header data
+  $colId = 0;
+  foreach($array2dump as $id => $element) {
+    foreach($element as $tag => $val) {
+      if(!in_array ($tag, $col2tag))
+        $col2tag[$colId++] = $tag;
+    }
+  }
+  foreach($col2tag as $colId => $tag)
+    $resCSVStr .= $tag.',';
+  $resCSVStr = preg_replace('/,$/', '', $resCSVStr); // only remove last one
+  $resCSVStr .= "\n";
+
+  // second, output all lines
+  foreach($array2dump as $id => $element) {
+    foreach($col2tag as $colId => $tag) {
+      if(array_key_exists($tag, $element))
+        $resCSVStr .= $element[$tag];
+      $resCSVStr .= ',';
+    }
+    $resCSVStr = preg_replace('/,$/', '', $resCSVStr); // only remove last one
+    $resCSVStr .= "\n";
+  }
+
+  return $resCSVStr;
+}
+
+/** =============================================================================================
+ * Util fct
+*/
+function api_array2xml($array2dump, $extraContext = NULL, $includeContext = TRUE, $makeXMElements = TRUE) {
+  $callers = debug_backtrace();
+  $xmlElementName = $callers[1]['function']; // use caller fct name
+
+  $xmlWriter = new XMLWriter();// ref: http://php.net/manual/en/book.xmlwriter.php
+  $xmlWriter->openMemory();
+  $xmlWriter->setIndent(true);
+  $xmlWriter->setIndentString("\t");
+  $xmlWriter->startDocument('1.0" encoding="iso-8859-1');
+
+  $xmlWriter->startElement($xmlElementName);
+
+  $xmlWriter->startAttribute('Timestamp');
+  $xmlWriter->text(time());
+  $xmlWriter->endAttribute();
+
+  if($extraContext) {
+    foreach($extraContext as $tag => $val) {
+      $xmlWriter->startAttribute($tag);
+      $xmlWriter->text($val);
+      $xmlWriter->endAttribute();
+    }
+  }
+
+  if($includeContext) {
+    global $user;
+    $xmlWriter->startAttribute('User');
+    $xmlWriter->text($user->mail);
+    $xmlWriter->endAttribute();
+
+    $xmlWriter->startAttribute('UserID');
+    $xmlWriter->text($user->uid);
+    $xmlWriter->endAttribute();
+
+    $xmlWriter->startAttribute('SitePath');
+    $xmlWriter->text(preg_replace('/\/.*/', '', preg_replace('/.*\/php\//', '', bs_get_site_base_path())));
+    $xmlWriter->endAttribute();
+
+    $xmlWriter->startAttribute('SiteIP');
+    $xmlWriter->text(ip_address());
+    $xmlWriter->endAttribute();
+
+    /*
+    $xmlWriter->startAttribute('GET');
+    $GETStr = "";
+    foreach($_GET as $key => $val) {
+      if($key != 'token') { // for security reasons, filter out auth token
+        if(strlen($GETStr))
+          $GETStr .= '&';
+        $GETStr .= $key.'='.$val;
+      }
+    }
+    $xmlWriter->text($GETStr);
+    $xmlWriter->endAttribute();
+    */
+  }
+
+  $xmlWriter->startElement("Records");
+  foreach($array2dump as $id => $element) {
+  	$xmlWriter->startElement("Record");
+    $xmlWriter->startAttribute("RecordID");
+    $xmlWriter->text($id);
+    $xmlWriter->endAttribute();
+
+    foreach($element as $tag => $val) {
+      if(is_array($val)) {
+        $xmlWriter->startElement($tag);
+        foreach($val as $tag2 => $val2) {
+          // probably an array again!
+          if(is_array($val2)) {
+            $xmlWriter->startElement(preg_replace('/s$/', '', $tag));
+            foreach($val2 as $tag3 => $val3) {
+              if($makeXMElements) {
+                $xmlWriter->startElement($tag3);
+                $xmlWriter->text($val3);
+                $xmlWriter->endElement();
+              } else {
+                $xmlWriter->startAttribute($tag3);
+                $xmlWriter->text($val3);
+                $xmlWriter->endAttribute();
+              }
+            }
+            $xmlWriter->endElement();
+          } else {
+            if($makeXMElements) {
+              $xmlWriter->startElement($tag2);
+              $xmlWriter->text($val2);
+              $xmlWriter->endElement();
+            } else {
+              $xmlWriter->startAttribute($tag2);
+              $xmlWriter->text($val2);
+              $xmlWriter->endAttribute();
+            }
+          }
+        }
+        $xmlWriter->endElement();
+      } else {
+        if($makeXMElements) {
+          $xmlWriter->startElement($tag);
+          $xmlWriter->text($val);
+          $xmlWriter->endElement();
+        } else {
+          $xmlWriter->startAttribute($tag);
+          $xmlWriter->text($val);
+          $xmlWriter->endAttribute();
+        }
+      }
+    }
+
+		$xmlWriter->endElement();
+  }
+
+  $xmlWriter->endElement(); // Records
+  $xmlWriter->endDocument();
+
+  return $xmlWriter->outputMemory();
+}
+
+
+?>

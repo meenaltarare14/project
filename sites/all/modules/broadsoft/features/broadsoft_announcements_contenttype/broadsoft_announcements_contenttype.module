@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the Broadsoft Announcements feature.
+ */
+
+include_once 'broadsoft_announcements_contenttype.features.inc';

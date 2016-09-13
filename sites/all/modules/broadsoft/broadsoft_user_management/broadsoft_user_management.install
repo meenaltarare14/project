@@ -1,0 +1,115 @@
+<?php
+
+/** =============================================================================================
+*/
+function broadsoft_user_management_uninstall() {
+  variable_del('broadsoft_user_management_LDAP_Server_Address');
+  variable_del('broadsoft_user_management_LDAP_Secondary_Server_Address');
+  variable_del('broadsoft_user_management_LDAP_Server_Port');
+  variable_del('broadsoft_user_management_LDAP_Base_Bind_DN');
+  variable_del('broadsoft_user_management_LDAP_Base_DN');
+  variable_del('broadsoft_user_management_LDAP_Auth_Bind_DN');
+  variable_del('broadsoft_user_management_LDAP_Auth_Bind_Password');
+  variable_del('broadsoft_user_management_Enable_User_Management');
+  
+  // variable_del('broadsoft_user_management_User_Management_Page_NID'); - do NOT disable this one yet: done at end of broadsoft_user_management_disableUserManagementGUI();  
+  if( function_exists('broadsoft_user_management_disableUserManagementGUI')) {
+    broadsoft_user_management_disableUserManagementGUI();
+  }
+}
+
+function broadsoft_user_management_enable() {
+  // Only the sites supporting Hybrid Login
+  if(bsutil_isXtendedSite() || bsutil_isInteropSite() || bsutil_iscPBXSite()) {  
+    $table_spec = array(
+      'fields' => array(
+        'xum_uid' => array(
+          'type' => 'serial', // auto increment
+          'not null' => TRUE,  
+        ),
+        'xum_user_uid' => array(
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'not null' => TRUE,  
+        ),
+        'xum_xchange_uid' => array(
+          'type' => 'int',
+          'unsigned' => TRUE,
+          'not null' => TRUE,  
+        ),
+      ),
+      'unique keys' => array( 'xum_uid' => array('xum_uid'), ),
+      'foreign keys' => array(
+        'fk_xum_user' => array(
+          'table' => 'users',
+          'columns' => array('xum_user_uid' => 'uid'),
+         ),
+       ),
+      'primary key' => array('xum_uid'),        
+    );
+    if( !db_table_exists('xchange_user_mapping') ){
+      db_create_table("xchange_user_mapping", $table_spec);
+    }
+  }
+  
+  //////////////////////////////////////////////////////////////////////////////
+  // Extended the Account Settings field with Phone Number and Full Name
+  $myField_name = "field_full_name";
+  if(!field_info_field($myField_name)) // check if the field already exists.
+  {
+    $field = array(
+        'field_name'    => $myField_name,
+        'type'          => 'text',
+    );
+    field_create_field($field);
+  
+    $field_instance = array(
+        'field_name'    => $myField_name,
+        'entity_type'   => 'user', // change this to 'node' to add attach the field to a node
+        'bundle'        => 'user', // if chosen 'node', type here the machine name of the content type. e.g. 'page'
+        'label'         => t('Full Name'),
+        'description'   => t('A user full name, used specifically in associating a point of contact to a support ticket.'),
+        'widget'        => array(
+            'type'      => 'text_textfield',
+            'weight'    => 10,
+        ),
+        'formatter'     => array(
+            'label'     => t('Default'),
+            'format'    => 'text_default'
+        ),
+        'settings'      => array(
+        )
+    );
+    field_create_instance($field_instance);
+  }  
+  $myField_name = "field_telephone_number";
+  if(!field_info_field($myField_name)) // check if the field already exists.
+  {
+    $field = array(
+        'field_name'    => $myField_name,
+        'type'          => 'text',
+    );
+    field_create_field($field);
+  
+    $field_instance = array(
+        'field_name'    => $myField_name,
+        'entity_type'   => 'user', // change this to 'node' to add attach the field to a node
+        'bundle'        => 'user', // if chosen 'node', type here the machine name of the content type. e.g. 'page'
+        'label'         => t('Telephone Number'),
+        'description'   => t('A user contact telephone number, used specifically in association with support ticket.'),
+        'widget'        => array(
+            'type'      => 'text_textfield',
+            'weight'    => 10,
+        ),
+        'formatter'     => array(
+            'label'     => t('Default'),
+            'format'    => '<Hidden>'
+        ),
+        'settings'      => array(
+        )
+    );
+    field_create_instance($field_instance);
+  }
+  
+}
+

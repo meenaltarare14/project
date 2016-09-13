@@ -1,0 +1,11 @@
+name = BroadSoft Content Correction
+description = Scan the users, nodes, images and other content type for invalid href tags and fix them.
+files[] = broadsoft_content_correction.module
+files[] = broadsoft_content_correction.admin.inc
+configure = admin/config/search/broadsoft_content_correction
+version = "7.x-0.1"
+core = 7.x
+package = "Broadsoft"
+project = "Broadsoft"
+datestamp = "1398265775"
+

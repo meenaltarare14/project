@@ -1,0 +1,14 @@
+; $Id:
+name = BroadSoft Statistics
+description = Provides a custom way of generating Statistics
+package = "Broadsoft"
+project = "Broadsoft"
+version = "7.0"
+core = "7.x"
+dependencies[] = views
+
+files[] = includes/broadsoft_statistics.views.inc
+files[] = includes/broadsoft_statistics_plugin_query.inc
+files[] = includes/broadsoft_statistics_handler_field.inc
+files[] = includes/broadsoft_statistics_event_views_field_handler.inc
+files[] = includes/broadsoft_statistics_ticketID_views_field_handler.inc

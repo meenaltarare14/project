@@ -1,0 +1,8 @@
+name = Broadsoft Achievements
+description = Provides a customized achievements for broadsoft.
+core = 7.x
+version = 7.x-1.0
+package = "Broadsoft"
+project = "Broadsoft"
+
+dependencies[] = achievements

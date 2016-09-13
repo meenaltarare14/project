@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the Broadsoft Frontslider feature.
+ */
+
+include_once 'broadsoft_frontslider.features.inc';

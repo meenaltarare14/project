@@ -1,0 +1,9 @@
+; $Id:
+name = Broadsoft Top Rated Responders
+description = Creates a block to display top rated responders
+package = "Broadsoft"
+project = "Broadsoft"
+version = "7.0"
+core = "7.x"
+dependencies[] = comment
+dependencies[] = votingapi

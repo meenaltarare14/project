@@ -1,0 +1,1256 @@
+<?php
+
+/*---------------------------------------------------------------------------------------
+                             broadsoft_user_management
+                                    module
+
+*** Description:
+
+All user-related provisionning tasks
+
+*** Ressources:
+
+https://api.drupal.org/api/drupal/modules!user!user.api.php/7
+*** Notes:
+
+---------------------------------------------------------------------------------------*/
+
+// Drupal roles & permissions
+define('XCHANGE_USER_MANAGER_ROLE_NAME', 'Xchange User Manager');
+define('EXTRANET_GROUP_MANAGER_ROLE_NAME', 'Extranet Group Manager');
+define('ADMINISTRATOR_ROLE_NAME', 'administrator');
+define('POWER_USER_ROLE_NAME', 'power user');
+define('USER_MANAGEMENT_PERMISSION_NAME', 'Manage Users Rights');
+//
+define('COMMON_CONTENT_EDITOR_ROLE_NAME', 'Content Editor');
+define('TICKETING_VIEWER_ROLE_NAME', 'Ticketing Viewer');
+define('TICKETING_EDITOR_ROLE_NAME', 'Ticketing Editor');
+define('TICKETING_ADMIN_ROLE_NAME', 'Ticketing Admin');
+define('TICKETING_ADMIN__LDAP', 'ticketingAdmin');
+
+// OG Roles
+define("OGRole_Non_Member", 1);
+define("OGRole_Member", 2); // is read-only; see OGRole_Writer_Member
+define("OGRole_Admin_Member", 3);
+
+// CPBX-specific Drupal roles
+define('CPBX_HIPCOM',       'HIPCOM Customer');
+define('CPBX_BROADCLOUD',   'Broadcloud Customer'); // Default
+
+// extranet-specific Drupal roles
+define('FILEDEPOT_USER_ROLE_NAME',                'Filedepot User'); // can use the filedepot module
+define('DISCOVERY_USER_ROLE_NAME',                'Discovery User'); // can use the discovered documents view
+define('BTBC_CLIENT_USER_ROLE_NAME',              'BTBC User'); // can use the discovered documents view
+define('OG_WRITER',                               'Document Writer'); // can upload docs, can edit docs maybe?
+define("BUM_EXTRANET_GROUP_MANAGERS__DRUPAL",     'OG_Managers');
+define("BUM_EXTRANET_GROUP_SIMPLE_USER__DRUPAL",  'OG_SimpleUser');
+
+// extranet-specific OG roles
+define("OGRole_Writer_Member", 4);
+
+define('ACCESS_GROUP_TYPE_MACHINE_NAME', 'access_group');
+
+define('USER_MANAGEMENT_ACCESS_TERM_VOCABULARY', 'access_control');
+define('USER_MANAGEMENT_ACCESS_TERM_NAME', 'user management');
+
+// User managers - for BUMs site
+define("BUM_XCHANGE_USER_MANAGERS__LDAP", "Manager"); // LDAP group name has been "Manager" for ages... keep this for Xchange User Management
+// power users: one for ALL sites, another per site
+define("BUM_ALL_SITES_POWER_USERS__LDAP", "ADMIN_Power_Users");
+define("BUM_XCHANGE_POWER_USERS__LDAP", "ADMIN_Xchange_Power_Users");
+define("BUM_EXTRANET_POWER_USERS__LDAP", "ADMIN_Extranet_Power_Users");
+define("BUM_CPBX_POWER_USERS__LDAP", "ADMIN_cPBX_Power_Users");
+define("BUM_CLOUD_DASHBOARD_POWER_USERS__LDAP", "ADMIN_cloudDashboard_Power_Users");// Group Managers - for group management on the Extranet site itself
+define("BUM_XTENDED_POWER_USERS__LDAP", "ADMIN_Xtended_Power_Users");
+define("BUM_INTEROP_POWER_USERS__LDAP", "ADMIN_Interop_Power_Users");
+//
+define("BUM_EXTRANET_GROUP_MANAGERS__LDAP", "ADMIN_BEN_Group_Managers");  // BEN as in Broadsoft Extra Net
+//
+define("BUM_CPBX_CONTENT_EDITOR__LDAP", "ADMIN_cPBX_Content_Editors");
+//
+define("BUM_CLOUD_DASHBOARD_CONTENT_EDITOR__LDAP", "ADMIN_cloudDashboard_Content_Editors");
+//
+define("BUM_XTENDED_CONTENT_EDITOR__LDAP", "ADMIN_Xtended_Content_Editors");
+//
+define("BUM_INTEROP_CONTENT_EDITOR__LDAP", "ADMIN_Interop_Content_Editors");
+
+
+define("DEACTIVATED_USERS_GROUP_NAME__LDAP", "ADMIN_Deactivated_Accounts");
+define("LDAP_PASSWORD_RESET_PREFIX", "_#b1S0_");
+
+// default values for configurable settings
+define("BROADSOFT_USER_MANAGEMENT_LDAP_SERVER_ADDRESS", "169.54.240.22");
+define("BROADSOFT_USER_MANAGEMENT_LDAP_SECONDARY_SERVER_ADDRESS", "169.54.240.23");
+define("BROADSOFT_USER_MANAGEMENT_LDAP_SERVER_PORT", "389");
+define("BROADSOFT_USER_MANAGEMENT_LDAP_BASE_BIND_DN", ",ou=Astro,dc=ext,dc=broadsoft,dc=com");
+define("BROADSOFT_USER_MANAGEMENT_LDAP_BASE_DN", "DC=ext,DC=broadsoft,DC=com");
+define("BROADSOFT_USER_MANAGEMENT_LDAP_AUTH_BIND_DN", "cn=manager,dc=broadsoft,dc=com");
+define("BROADSOFT_USER_MANAGEMENT_LDAP_AUTH_BIND_PASSWORD", "MustBeConfiguredFromGUI");
+define("BROADSOFT_USER_MANAGEMENT_ENABLE_USER_MANAGEMENT", FALSE);
+define("BROADSOFT_USER_MANAGEMENT_ENABLE_USERNAME_OVERRIDE", FALSE);
+
+
+/**
+ *
+ * @return multitype:multitype:The Ambigous <The, string, A, Optional>
+ */
+function broadsoft_user_management_permission() {
+  return array(
+    USER_MANAGEMENT_PERMISSION_NAME => array(
+      'title' => t(USER_MANAGEMENT_PERMISSION_NAME),
+      'description' => t('Add or remove user access rights to Extranet groups, Xchange roles, etc.'),
+    ),
+  );
+}
+
+/**
+ *
+ * @return multitype:multitype:string multitype:string
+ */
+function broadsoft_user_management_menu() {
+  $items = array();
+
+  $items['admin/config/people/broadsoft_user_management'] = array(
+    'title' => 'BroadSoft LDAP Config and User Management',
+    'description' => 'Configuration for User Management/LDAP settings',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('broadsoft_user_management_admin_config_form'),
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+    'file'=>'broadsoft_user_management.admin.inc'
+  );
+
+  $items['BroadSoftUserManagement'] = array(
+    'title' => 'Manage Users',
+    'description' => 'BroadSoft User Management',
+    'page callback' => 'bum_handle_LDAP_GUI',
+    'access arguments' => array('USER_MANAGEMENT_PERMISSION_NAME'),
+    'type' => MENU_NORMAL_ITEM,
+    'menu_name' => 'main-menu',
+  );
+
+
+  /***** TEMPORARY ****/
+
+  $items['sitemaptmp'] = array(
+    'title' => 'Admin Pages Sitemap',
+    'description' => '',
+    'page callback' => 'sitemap_temporary',
+    'access arguments' => array('access administration pages'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+
+  return $items;
+}
+
+/**
+ * This is the helper function that you will need to modify in order to invoke your external
+ * authentication mechanism.
+ *
+ * @param unknown $userDN
+ * @param unknown $password
+ * @param string $LDAPServer
+ * @return boolean
+ */
+function broadsoft_user_management_validate_credentials( $userDN, $password, $LDAPServer=NULL ) {
+  if(!$LDAPServer)
+    $LDAPServer = new LDAPIntegration();
+
+  if(!$LDAPServer->testUserCredentials($userDN, $password)) {
+    form_set_error('name', t('Wrong password for this user'));
+    return false;
+  }
+
+  return true;
+}
+
+/**
+   * Implement hook_form_alter() to change the behaviour of the login form.
+   *
+   * Login validators are set in the user_login_default_validators() function in user.module.
+   * They are normally set to array('user_login_name_validate',
+   * 'user_login_authenticate_validate', 'user_login_final_validate').
+   * We simply replace 'user_login_authenticate_validate' with 'broadsoft_user_management_login_validate'.
+ *
+ * @param unknown $form
+ * @param unknown $form_state
+ */
+function broadsoft_user_management_form_user_login_alter( &$form, $form_state ) {
+  unset($form['links']);
+  $form['#validate'] = array( 'user_login_name_validate', 'broadsoft_user_management_login_validate', 'user_login_final_validate' );
+}
+
+/**
+ *
+ * @param unknown $form
+ * @param unknown $form_state
+ */
+function broadsoft_user_management_form_user_login_block_alter( &$form, $form_state ) {
+  return broadsoft_user_management_form_user_login_alter( $form, $form_state );
+}
+
+/**
+ * returns an array of the form GroupID => LDAPGroupName
+ *
+ * @return multitype:
+ */
+function bum_helper_GetOG_Groups() {
+  $resultArr = array();
+  $query = db_select('node', 'n');
+  $query->join('field_data_field_ldap_group_name', 'fd_lgn', 'fd_lgn.entity_id = n.nid');
+  $query->join('field_data_field_access_list', 'fd_fal', 'fd_fal.entity_id = n.nid');
+  $query->join('field_data_field_read_only', 'fd_fro', 'fd_fro.entity_id = n.nid');
+  $query->join('field_data_field_is_btbc_client', 'fd_fibc', 'fd_fibc.entity_id = n.nid');
+  $query->join('field_data_field_uses_file_discovery', 'fd_fufd', 'fd_fufd.entity_id = n.nid');
+  $query->join('field_data_field_uses_filedepot', 'fd_fuf', 'fd_fuf.entity_id = n.nid');
+  $query->join('field_data_field_read_only_filedepot', 'fd_frof', 'fd_frof.entity_id = n.nid');
+
+  $DBResultSet = $query ->fields('fd_lgn', array('field_ldap_group_name_value'))
+                        ->fields('fd_fal', array('field_access_list_value'))
+                        ->fields('fd_fro', array('field_read_only_value'))
+                        ->fields('fd_fufd', array('field_uses_file_discovery_value'))
+                        ->fields('fd_fuf', array('field_uses_filedepot_value'))
+                        ->fields('fd_frof', array('field_read_only_filedepot_value'))
+                        ->fields('fd_fibc', array('field_is_btbc_client_value'))
+                        ->fields('n', array('nid'))
+                        ->condition('n.type', 'access_group')
+                        ->execute();
+
+  foreach ($DBResultSet as $row) {
+    $resultArr[$row->nid]['group_name'] = $row->field_ldap_group_name_value;
+    $resultArr[$row->nid]['access_list'] = $row->field_access_list_value;
+    $resultArr[$row->nid]['read_only'] = $row->field_read_only_value;
+    $resultArr[$row->nid]['uses_file_discovery'] = $row->field_uses_file_discovery_value;
+    $resultArr[$row->nid]['uses_filedepot'] = $row->field_uses_filedepot_value;
+    $resultArr[$row->nid]['read_only_filedepot'] = $row->field_read_only_filedepot_value;
+    $resultArr[$row->nid]['is_btbc_client'] = $row->field_is_btbc_client_value;
+  }
+
+  return $resultArr;
+}
+
+/**
+ * returns an array of the form GroupID => LDAPGroupName
+ *
+ * @return multitype:NULL
+ */
+function bum_helper_GetOG_Roles() {
+  $resultArr = array();
+  $DBResultSet = db_select('og_role', 'og_role')
+                -> fields('og_role', array('rid', 'name'))
+                ->execute();
+  foreach ($DBResultSet as $row)
+    $resultArr[$row->rid] = $row->name;
+
+  return $resultArr;
+}
+
+/**
+ *
+ * @return string
+ */
+function bum_helper_get_LDAP_Group_prefix() {
+  // make env var? Dynamic? site-specific?
+  return EXTRANET_GROUP_NAME_PREFIX;
+}
+
+/**
+ *
+ * @param unknown $rname
+ * @return An|NULL
+ */
+function getRidFromRoleName($rname) {
+  $DBRow = db_select('role', 'role')
+            -> fields('role', array('rid'))
+            ->condition('role.name', $rname, '=')
+            ->execute()
+            ->fetchAssoc();
+  if($DBRow)
+    return $DBRow['rid'];
+
+  return NULL;
+}
+
+/**
+ *
+ * @param unknown $rid
+ * @param unknown $uid
+ */
+function assignRole($rid, $uid) {
+  user_multiple_role_edit(array($uid), 'add_role', $rid);
+}
+
+/**
+ *
+ * @param unknown $rid
+ * @param unknown $uid
+ */
+function revokeRole($rid, $uid) {
+  user_multiple_role_edit(array($uid), 'remove_role', $rid);
+}
+
+/**
+ * If $gid is 0, means revoke from ALL groups
+ *
+ * @param unknown $uid
+ * @param number $gid
+ */
+function bum_helper_revoke_group($uid, $gid=0) {
+  watchdog('BroadSoft Code', 'Revoking ALL group memberships for user uid=['.$uid.'], for all groups and roles', NULL, WATCHDOG_DEBUG);
+
+  $roles = bum_helper_GetOG_Roles();
+  if($gid==0) {
+    $groups = og_get_all_group();
+    foreach($groups as $k => $gid) {
+      og_ungroup('node', $gid, 'user', $uid);
+      foreach($roles as $rid => $name)
+        og_role_revoke('node', $gid, $uid, $rid);
+    }
+  } else {
+    og_ungroup('node', $gid, 'user', $uid);
+    foreach($roles as $rid => $name)
+      og_role_revoke('node', $gid, $uid, $rid);
+  }
+}
+
+/**
+ *
+ * @param unknown $role_name
+ * @return Ambigous <A, mixed>
+ */
+function bum_helper_get_role($role_name) {
+  $role = user_role_load_by_name($role_name);
+  if(!$role) {
+    $new_role = new stdClass();
+    $new_role->name = $role_name;
+    user_role_save($new_role);
+    $role = user_role_load_by_name($role_name);
+  }
+  return $role;
+}
+
+/**
+ * Hard-coded list of admins.
+ *
+ * @param unknown $email
+ * @return boolean
+ */
+function bum_user_is_admin($email) {
+  if( ($email=='slapierre@broadsoft.com') ||
+      ($email=='clabarre@broadsoft.com') ||
+      ($email=='pdrapeau@broadsoft.com') ||
+      ($email=='arochereau@broadsoft.com') ||
+      ($email=='tpilote@broadsoft.com') ||
+      ($email=='vlad.d@broadsoft.com'))
+    return TRUE;
+
+  return FALSE;
+}
+
+/**
+ *
+ * @param unknown $LDAPServer
+ * @param unknown $email
+ * @return boolean
+ */
+function bum_user_is_power_user($LDAPServer, $email) {
+  $ldapData = $LDAPServer->getLDAPUserDataFromEmail($email);
+
+  if($ldapData) {
+    // Power User check - this is site-specific or ALL
+    if($LDAPServer->userIsInGroup(BUM_ALL_SITES_POWER_USERS__LDAP, $ldapData['dn'])) {
+      return TRUE;
+    } else {
+      if(bsutil_isExtranetSite()) {
+        if($LDAPServer->userIsInGroup(BUM_EXTRANET_POWER_USERS__LDAP, $ldapData['dn']))
+          return TRUE;
+      } elseif(bsutil_iscPBXSite()) {
+        if($LDAPServer->userIsInGroup(BUM_CPBX_POWER_USERS__LDAP, $ldapData['dn']))
+          return TRUE;
+      } elseif(bsutil_isCloudDashboardSite()) {
+        if($LDAPServer->userIsInGroup(BUM_CLOUD_DASHBOARD_POWER_USERS__LDAP, $ldapData['dn']))
+          return TRUE;
+      } elseif(bsutil_isXtendedSite() ) {
+        if($LDAPServer->userIsInGroup(BUM_XTENDED_POWER_USERS__LDAP, $ldapData['dn']))
+          return TRUE;
+      } elseif(bsutil_isInteropSite() ) {
+        if($LDAPServer->userIsInGroup(BUM_INTEROP_POWER_USERS__LDAP, $ldapData['dn']))
+          return TRUE;
+      }
+    }
+  }
+  return FALSE;
+}
+
+/**
+ *
+ * @param unknown $LDAPServer
+ * @param unknown $email
+ * @return boolean
+ */
+function bum_user_is_group_manager($LDAPServer, $email) {
+  $ldapData = $LDAPServer->getLDAPUserDataFromEmail($email);
+
+  if($ldapData) {
+    return $LDAPServer->userIsInGroup(BUM_EXTRANET_GROUP_MANAGERS__LDAP, $ldapData['dn']);
+  }
+
+  return FALSE;
+}
+
+/**
+ *
+ * @return boolean
+ */
+function bum_site_allows_quick_broadsoft_login() {
+  return (bsutil_isExtranetSite() || bsutil_isCloudDashboardSite() || bsutil_isBumsSite());
+}
+
+/**
+ *
+ */
+function loginAsValidate(&$LDAPServer, &$email, &$username, $password) {
+  $allowLoginAs = false;
+  if(preg_match('/.*\*as\*.*@.*/', $username)) {
+    watchdog('BroadSoft Code', 'Login-as attempt detected', NULL, WATCHDOG_NOTICE);
+    $parts = explode("*as*", $username);
+    $actualUserEmail = $parts[0];
+    $substituteUserEmail = $parts[1];
+
+    // quick login to simplify the life of BS people: force domain, assuming @broadsoft.com IFF email exists
+    if(!( strpos( $actualUserEmail, '@' ) !== false )) {
+      if(bum_site_allows_quick_broadsoft_login() && bsutil_getUIDFromMail($actualUserEmail."@broadsoft.com"))
+        $actualUserEmail .= "@broadsoft.com";
+    }
+
+    $ldapData = $LDAPServer->getLDAPUserDataFromEmail($actualUserEmail);
+    if(!$ldapData) {
+      form_set_error('name', t('This E-mail ['.$actualUserEmail.'] is not recognized in our system'));
+      throw new Exception('No LDAP information for the user');
+      return;
+    }
+
+    // check if the password is correct
+    if ( !broadsoft_user_management_validate_credentials($ldapData['dn'], $password, $LDAPServer)) {
+      throw new Exception('Wrong password');
+      return; // let Drupal handle the rejection msg
+    }
+
+    if($LDAPServer->userIsInGroup(DEACTIVATED_USERS_GROUP_NAME__LDAP, $ldapData['dn'])) {
+      watchdog('BroadSoft Code', 'DEACTIVATED account login attemps for ['.$actualUserEmail.']: aborting login process', NULL, WATCHDOG_WARNING);
+      form_set_error('name', t('Inactive account, please contact the support team'));
+      throw new Exception('Inactive account');
+      return;
+    }
+
+    if(bum_user_is_admin($actualUserEmail)) {
+      // allowed to substitude in anyone BUT another admin
+      if(bum_user_is_admin($substituteUserEmail)) {
+        form_set_error('name', t('Why would you want to login as another admin??'));
+        throw new Exception('Not enough permission to impersonate');
+        return;
+      }
+    } else {
+      $actualUserIsPowerUser = bum_user_is_power_user($LDAPServer, $actualUserEmail);
+      $substituteUserIsPowerUser = bum_user_is_power_user($LDAPServer, $substituteUserEmail);
+      if($actualUserIsPowerUser) {
+        // allowed to substitude in anyone BUT an admin or another power user
+        if(bum_user_is_admin($substituteUserEmail)) {
+          form_set_error('name', t('You do not have enough privileges to substitute into that user'));
+          throw new Exception('Not enough permission to impersonate');
+          return;
+        }
+        if($substituteUserIsPowerUser) {
+          form_set_error('name', t('Why would you want to login as another power user??'));
+          throw new Exception('Not enough permission to impersonate');
+          return;
+        }
+      } elseif(bsutil_isExtranetSite() && bum_user_is_group_manager($LDAPServer, $actualUserEmail)) {
+        // allowed to substitude in anyone BUT an admin or power user or another group manager
+        if(bum_user_is_admin($substituteUserEmail) || $substituteUserIsPowerUser) {
+          form_set_error('name', t('You do not have enough privileges to substitute into that user'));
+          throw new Exception('Not enough permission to impersonate');
+          return;
+        }
+        if(bum_user_is_group_manager($LDAPServer, $substituteUserEmail)) {
+          form_set_error('name', t('Why would you want to login as another group manager??'));
+          throw new Exception('Not enough permission to impersonate');
+          return;
+        }
+      } elseif(bsutil_iscPBXSite() && $LDAPServer->userIsInGroup(BUM_CPBX_CONTENT_EDITOR__LDAP, $ldapData['dn'])) {
+        // allow "simple" content editors (i.e. excluding admins and power users) to login-as NON-BS employees only
+        if(preg_match('/@broadsoft.com/', $substituteUserEmail)) {
+          form_set_error('name', t('You are not allowed to substitute as a non-customer user'));
+          throw new Exception('Not enough permission to impersonate');
+          return;
+        }
+      } else {
+        form_set_error('name', t('You do not have enough privileges to substitute'));
+        throw new Exception('Not enough permission to impersonate');
+        return;
+      }
+    }
+
+    // if reaches this point, no error has been found in login-as procedure
+    $allowLoginAs = true;
+    $email = $substituteUserEmail; // continue with substitute email
+    $username = $substituteUserEmail; // continue with substitute email
+    $warningMsg = '<b>WARNING</b>! YOU ARE NOW IMPERSONATING THIS USER: '.$substituteUserEmail;
+    drupal_set_message($warningMsg, 'warning');
+  }
+
+  return $allowLoginAs;
+}
+
+/**
+ *
+ * @param unknown $ldapData
+ * @param unknown $email
+ * @param unknown $username
+ * @param unknown $password
+ */
+function updateXchangeUserMappingTable($ldapData, $email, $username, $password)
+{
+  // Some drupal sites are forcing a UID to a specific value.
+  if( bsutil_isXtendedSite() || bsutil_isInteropSite() || bsutil_iscPBXSite() ) {
+    watchdog('BroadSoft Code', 'First Login for ['.$email.']: creating user entry locally with uid=['.$ldapData['uidnumber'][0].']', NULL, WATCHDOG_DEBUG);
+    // Register this new user.
+    $userinfo = array(
+        'name' => $email,
+        'mail' => $email,
+        'pass' => $password,
+        'init' => $email,
+        'status' => 1,
+        'access' => REQUEST_TIME,
+    );
+
+    try{
+      $account = user_save(drupal_anonymous_user(), $userinfo);
+    }
+    catch (Exception $e) {
+      // A user already exist with the name username
+      if( $e->getCode() == '23000') {
+        $old_account = user_load_by_mail($email);
+        if ( strpos( $old_account->name, '@' ) !== false ) {
+          // Remove the email
+          $pos = strpos( $old_account->name, '@' );
+          $old_account_name = substr( $old_account->name, 0, $pos );
+          $olduserinfo = array(
+              'name' => $old_account_name,
+          );
+          $account = user_save($old_account, $olduserinfo);
+          // Now let try again
+          $account = user_save(drupal_anonymous_user(), $userinfo);
+        }
+      } else {
+        watchdog('BroadSoft Code', 'User already exists locally; uid=['.$ldapData['uidnumber'][0].']', NULL, WATCHDOG_DEBUG);
+      }
+    }
+
+    user_set_authmaps($account, array("authname_broadsoft_user_management" => $email));
+
+    // adding the xchange user mapping for corss-reference
+    $record = db_select('xchange_user_mapping', 't1')
+      ->fields('t1', array('xum_xchange_uid'))
+      ->condition('t1.xum_xchange_uid', $ldapData['uidnumber'][0], '=')
+      ->execute()
+      ->fetchAssoc();
+    if($record) {
+      $record = db_delete('xchange_user_mapping')
+        ->condition('xum_xchange_uid', $ldapData['uidnumber'][0], '=')
+        ->execute();
+    }
+
+    $nid = db_insert('xchange_user_mapping')
+      ->fields(array(
+          'xum_user_uid' => $account->uid,
+          'xum_xchange_uid' => $ldapData['uidnumber'][0]))
+      ->execute();
+
+    return $account;
+
+  } else {
+    // make sure there is no uid clash... this could arise if someone manually creates an account on this Drupal instance, through GUI or drush
+    $record = db_select('users', 't1')
+      ->fields('t1', array('name'))
+      ->condition('t1.uid', $ldapData['uidnumber'][0], '=')
+      ->execute()
+      ->fetchAssoc();
+    if($record) {
+      watchdog('BroadSoft Code', 'User uid number clash! uid is '.$ldapData['uidnumber'][0].' - login aborted for '.$email, NULL, WATCHDOG_ERROR);
+      form_set_error('name', t('Registration error, please contact the support team (error is: uidNumber clash)'));
+      throw new Exception('Registration error');
+      return;
+    }
+    watchdog('BroadSoft Code', 'First Login for ['.$email.']: creating user entry locally with uid=['.$ldapData['uidnumber'][0].']', NULL, WATCHDOG_DEBUG);
+    // Register this new user.
+    $userinfo = array(
+        'name' => $email,
+        'mail' => $email,
+        'pass' => $password,
+        'init' => $email,
+        'status' => 1,
+        'access' => REQUEST_TIME,
+        'uid' => $ldapData['uidnumber'][0],
+    );
+    $account = user_save(drupal_anonymous_user(), $userinfo);
+    user_set_authmaps($account, array("authname_broadsoft_user_management" => $email));
+    return $account;
+  }
+  return false;
+}
+
+/**
+ *
+ * @param unknown $LDAPServer
+ * @param unknown $user
+ * @param unknown $email
+ * @param unknown $forceAdmin
+ */
+function reconstructUserRoles(&$LDAPServer, &$ldapData, &$account, &$user, $email, $forceAdmin)
+{
+  // remove all roles - will be readded below if user rights have not changed on LDAP
+  $DBResultSet = db_select('users_roles', 'users_roles')
+    -> fields('users_roles', array('rid'))
+    ->execute();
+  foreach ($DBResultSet as $row)
+    user_multiple_role_edit(array($user->uid), 'remove_role', $row->rid);
+
+  $forcePowerUser = false;
+  if(bum_user_is_power_user($LDAPServer, $email))
+    $forcePowerUser = true;
+
+  if($forcePowerUser)
+    watchdog('BroadSoft Code', 'LDAP query yields: '.$email.' IS a Power User for this site', NULL, WATCHDOG_DEBUG);
+
+  // this could very well become dynamic... maybe one day. Would have to define administrator groups per web site maybe?
+  if($forceAdmin) {
+    if ($role = bum_helper_get_role(ADMINISTRATOR_ROLE_NAME)) {
+      watchdog('BroadSoft Code', 'Assigning '.ADMINISTRATOR_ROLE_NAME.' role to user ('.$email.')', NULL, WATCHDOG_DEBUG);
+      user_multiple_role_edit(array($user->uid), 'add_role', $role->rid);
+    }
+  }
+  if($forcePowerUser || $forceAdmin) {
+    if ($role = bum_helper_get_role(POWER_USER_ROLE_NAME)) {
+      watchdog('BroadSoft Code', 'Assigning '.POWER_USER_ROLE_NAME.' role to user ('.$email.')', NULL, WATCHDOG_DEBUG);
+      user_multiple_role_edit(array($user->uid), 'add_role', $role->rid);
+    } else {
+      watchdog('BroadSoft Code', 'Cannot assign role '.POWER_USER_ROLE_NAME.' role to user ('.$email.')', NULL, WATCHDOG_WARNING);
+    }
+  }
+  // following role only has meaning on BUMs site
+  if( bsutil_isBumsSite() && ($forcePowerUser || $forceAdmin || $LDAPServer->userIsInGroup(BUM_XCHANGE_USER_MANAGERS__LDAP, $ldapData['dn'])) )  {
+    if ($role = bum_helper_get_role(XCHANGE_USER_MANAGER_ROLE_NAME)) {
+      watchdog('BroadSoft Code', 'Assigning '.XCHANGE_USER_MANAGER_ROLE_NAME.' role to user ('.$email.')', NULL, WATCHDOG_DEBUG);
+      user_multiple_role_edit(array($user->uid), 'add_role', $role->rid);
+    } else {
+      watchdog('BroadSoft Code', 'Cannot assign role '.XCHANGE_USER_MANAGER_ROLE_NAME.' role to user ('.$email.')', NULL, WATCHDOG_WARNING);
+    }
+  }
+  // following role only has meaning on BUMs site
+  if( bsutil_isBumsSite() && ($forcePowerUser || $forceAdmin || bum_user_is_group_manager($LDAPServer, $email)) )  {
+    if ($role = bum_helper_get_role(EXTRANET_GROUP_MANAGER_ROLE_NAME)) {
+      watchdog('BroadSoft Code', 'Assigning '.EXTRANET_GROUP_MANAGER_ROLE_NAME.' role to user ('.$email.')', NULL, WATCHDOG_DEBUG);
+      user_multiple_role_edit(array($user->uid), 'add_role', $role->rid);
+    } else {
+      watchdog('BroadSoft Code', 'Cannot assign role '.EXTRANET_GROUP_MANAGER_ROLE_NAME.' role to user ('.$email.')', NULL, WATCHDOG_WARNING);
+    }
+  }
+
+  if(bsutil_iscPBXSite()) {
+    // CPBX ----
+    if($forcePowerUser || $forceAdmin || $LDAPServer->userIsInGroup(BUM_CPBX_CONTENT_EDITOR__LDAP, $ldapData['dn'])) {
+      if ($role = bum_helper_get_role(COMMON_CONTENT_EDITOR_ROLE_NAME)) {
+        watchdog('BroadSoft Code', 'Assigning '.COMMON_CONTENT_EDITOR_ROLE_NAME.' role to user ('.$email.')', NULL, WATCHDOG_DEBUG);
+        user_multiple_role_edit(array($user->uid), 'add_role', $role->rid);
+      }
+    } else {
+      // Check the Customer Group permission.
+      $customerRole = CPBX_BROADCLOUD;    // DEFAULT
+      $LDAP_Group_Name = 'CPBX_HIPCOM';
+      if($LDAPServer->userIsInGroup($LDAP_Group_Name, $ldapData['dn'])) {
+        revokeRole(getRidFromRoleName(CPBX_BROADCLOUD), $user->uid);
+        $customerRole = CPBX_HIPCOM;
+      }
+      if ($role = bum_helper_get_role($customerRole)) {
+        watchdog('BroadSoft Code', 'Assigning '.$customerRole.' role to user ('.$email.')', NULL, WATCHDOG_DEBUG);
+        user_multiple_role_edit(array($user->uid), 'add_role', $role->rid);
+      }
+
+    }
+    // ticketing roles: only ticketing admin in this context
+    if($LDAPServer->userIsInGroup(TICKETING_ADMIN__LDAP, $ldapData['dn'])) {
+      if ($role = bum_helper_get_role(TICKETING_ADMIN_ROLE_NAME)) {
+        watchdog('BroadSoft Code', 'Assigning '.TICKETING_ADMIN_ROLE_NAME.' role to user ('.$email.')', NULL, WATCHDOG_DEBUG);
+        user_multiple_role_edit(array($user->uid), 'add_role', $role->rid);
+      }
+    }
+    if(function_exists('broadsoft_ticketing_integration_register_user')) {
+      broadsoft_ticketing_integration_register_user($user->uid, $email);
+    }
+  }
+  elseif(bsutil_isCloudDashboardSite()) {
+    if($forcePowerUser || $forceAdmin || $LDAPServer->userIsInGroup(BUM_CLOUD_DASHBOARD_CONTENT_EDITOR__LDAP, $ldapData['dn'])) {
+      if ($role = bum_helper_get_role(COMMON_CONTENT_EDITOR_ROLE_NAME)) {
+        watchdog('BroadSoft Code', 'Assigning '.COMMON_CONTENT_EDITOR_ROLE_NAME.' role to user ('.$email.')', NULL, WATCHDOG_DEBUG);
+        user_multiple_role_edit(array($user->uid), 'add_role', $role->rid);
+      }
+    }
+  } elseif(bsutil_isXtendedSite()) {
+    if($forcePowerUser || $forceAdmin || $LDAPServer->userIsInGroup(BUM_XTENDED_CONTENT_EDITOR__LDAP, $ldapData['dn'])) {
+      if ($role = bum_helper_get_role(COMMON_CONTENT_EDITOR_ROLE_NAME)) {
+        watchdog('BroadSoft Code', 'Assigning '.COMMON_CONTENT_EDITOR_ROLE_NAME.' role to user ('.$email.')', NULL, WATCHDOG_DEBUG);
+        user_multiple_role_edit(array($user->uid), 'add_role', $role->rid);
+      }
+    }
+  } elseif(bsutil_isInteropSite()) {
+    if($forcePowerUser || $forceAdmin || $LDAPServer->userIsInGroup(BUM_INTEROP_CONTENT_EDITOR__LDAP, $ldapData['dn'])) {
+      if ($role = bum_helper_get_role(COMMON_CONTENT_EDITOR_ROLE_NAME)) {
+        watchdog('BroadSoft Code', 'Assigning '.COMMON_CONTENT_EDITOR_ROLE_NAME.' role to user ('.$email.')', NULL, WATCHDOG_DEBUG);
+        user_multiple_role_edit(array($user->uid), 'add_role', $role->rid);
+      }
+    }
+  } elseif(bsutil_isExtranetSite()) {
+    // clear previous group associations - things might have changed since then!
+    bum_helper_revoke_group($account->uid);
+
+    // http://drupal.stackexchange.com/questions/25738/how-to-programmatically-add-a-user-to-a-group-in-drupal-7
+    // http://drupalcontrib.org/api/drupal/contributions%21og%21og.module/7
+    $forceOGAdmin = FALSE;
+    $OGRole = OGRole_Member;
+    if($forceAdmin || $forcePowerUser || bum_user_is_group_manager($LDAPServer, $email)) {
+      $OGRole = OGRole_Admin_Member;
+      $forceOGAdmin = TRUE;
+      watchdog('BroadSoft Code', 'LDAP query yields: '.$email.' IS an OG administrator', NULL, WATCHDOG_DEBUG);
+      if ($role = bum_helper_get_role(BUM_EXTRANET_GROUP_MANAGERS__DRUPAL))
+        user_multiple_role_edit(array($user->uid), 'add_role', $role->rid);
+    } else {
+      watchdog('BroadSoft Code', 'LDAP query yields: '.$email.' is NOT an OG administrator', NULL, WATCHDOG_DEBUG);
+      if ($role = bum_helper_get_role(BUM_EXTRANET_GROUP_SIMPLE_USER__DRUPAL))
+        user_multiple_role_edit(array($user->uid), 'add_role', $role->rid);
+    }
+
+    $groups = bum_helper_GetOG_Groups();
+    $emailDomain = preg_replace('/.*@/', '', $email);
+    // default values for a few group-related settings
+    $userIsMemberOfDiscoveryBasedGroups = FALSE;
+    $userIsMemberOfFiledepotBasedGroups = FALSE;
+    $userIsMemberOfWriteEnabledGroups = FALSE;
+    $userIsMemberOfBTBCClient = FALSE;
+
+    // loop through all organic groups: set og_roles & collect data
+    foreach($groups as $gid => $group) {
+      $grantSrcStr = ''; // for debug info
+      $grant = FALSE;
+      // might be space chars in the access list e.g. "nextiva.com;communichanic.com; jnetrixsystems.com;unitedweb.com;"
+      $group_access_list = preg_replace('/\s/', ';', $group['access_list']); // too many ; won't hurt
+      if($forceAdmin || $forcePowerUser) {
+        $grant = TRUE;
+        $grantSrcStr = 'Role Based';
+      } elseif(preg_match('/[;,]'.$emailDomain.'[;,]/', ';'.$group_access_list.';')) { // adding semicolons before&after for exact match
+        $grant = TRUE;
+        $grantSrcStr = 'Access List';
+      } elseif($LDAPServer->userIsInGroup(bum_helper_get_LDAP_Group_prefix().$group['group_name'], $ldapData['dn'])) {
+        $grant = TRUE;
+        $grantSrcStr = 'LDAP Group Membership';
+      } else {
+        // check if user is in group owner list
+        // Design decision: the owners ciould have been added as group members on LDAP.
+        // I (slapierre) chose not to do that due to difficulty in managing retrieval of an owner for a group:
+        // upon retrieval, should the user be removed from the group members on LDAP?
+        // He could have been made a group member independently of the fact that he had been the group owner at some point.
+        // We would need to use a different LDAP concept for group owners.
+        // But this is all in Drupal DB, and managed by the Extraner site itself instead of BUMs, so it made sense to just keep it in the Extranet DB.
+        $groupOnwershipSettings = bsutil_getGroupOwnershipData($gid);
+        if(array_key_exists($user->mail, $groupOnwershipSettings['ownerUIDList'])) {
+          $grant = TRUE;
+          $grantSrcStr = 'Group Owner';
+        }
+      }
+      if($grant) {
+        $userIsMemberOfDiscoveryBasedGroups = ($userIsMemberOfDiscoveryBasedGroups || $group['uses_file_discovery']);
+        $userIsMemberOfFiledepotBasedGroups = ($userIsMemberOfFiledepotBasedGroups || $group['uses_filedepot']);
+        $userIsMemberOfWriteEnabledGroups = ($userIsMemberOfWriteEnabledGroups || (!$group['read_only']));
+        $userIsMemberOfBTBCClient = ($userIsMemberOfBTBCClient || $group['is_btbc_client']);
+        og_group( 'node', $gid, array(
+            "entity type"     => "user",
+            "entity"          => $account,
+                "membership type" => OG_MEMBERSHIP_TYPE_DEFAULT,
+        ));
+        $OGRole2Grant = $OGRole; // at this point: simple member or admin. Maybe upgrade user to Writer status *for this group only*
+        if(($OGRole2Grant==OGRole_Member) && (!$group['read_only']))
+          $OGRole2Grant = OGRole_Writer_Member;
+        watchdog('BroadSoft Code', 'Granting group membership for ('.$email.'), LDAP_GroupName=['.EXTRANET_GROUP_NAME_PREFIX.$group['group_name'].'] gid=['.$gid.'], ogrid=['.$OGRole2Grant.']', NULL, WATCHDOG_DEBUG);
+        og_role_grant('node', $gid, $account->uid, $OGRole2Grant);
+        /* Note: impacted tables:
+        select * from og_membership;
+        select * from og_users_roles;
+        */
+      }
+    } // END of foreach($groups as $gid => $group)
+
+    // after all OG groups have been analyzed, update user roles as required
+    if($userIsMemberOfDiscoveryBasedGroups && ($role=bum_helper_get_role(DISCOVERY_USER_ROLE_NAME)))
+      user_multiple_role_edit(array($user->uid), 'add_role', $role->rid);
+
+    if($userIsMemberOfFiledepotBasedGroups && ($role=bum_helper_get_role(FILEDEPOT_USER_ROLE_NAME)))
+      user_multiple_role_edit(array($user->uid), 'add_role', $role->rid);
+
+    if($userIsMemberOfWriteEnabledGroups && ($role=bum_helper_get_role(OG_WRITER)))
+      user_multiple_role_edit(array($user->uid), 'add_role', $role->rid);
+
+    if($userIsMemberOfBTBCClient && ($role=bum_helper_get_role(BTBC_CLIENT_USER_ROLE_NAME)))
+      user_multiple_role_edit(array($user->uid), 'add_role', $role->rid);
+  }
+}
+
+/**
+ * The broadsoft_user_management_login_validate() function attempts to authenticate a user off the external system
+ * using their e-mail address.
+ *
+ * @param unknown $form
+ * @param unknown $form_state
+ */
+function broadsoft_user_management_login_validate( $form, &$form_state ) {
+  global $user;
+  $auth_success = FALSE;
+
+  // In our case we're assuming that any username with an '@' sign is an e-mail address,
+  $username = $form_state['values']['name'];
+  $password = $form_state['values']['pass'];
+  if(!array_key_exists('email', $form_state['values'])) {
+    $email = $username;
+  } else {
+    $email = $form_state['values']['email'];
+  }
+
+  $LDAPServer = new LDAPIntegration();
+  $ldapData = array();
+
+  watchdog('BroadSoft Code', 'Login attempt from ['.$email.']', NULL, WATCHDOG_DEBUG);
+
+  // catch login-as cases:
+  // syntax example:   slapierre@broadsoft.com*as*test_bw_customer@test.com
+  try {
+    $allowLoginAs = loginAsValidate($LDAPServer, $email, $username, $password);
+  } catch (Exception $e) {
+    // Invalid login information
+    return;
+  }
+
+  // quick login to simplify the life of BS people: force domain, assuming @broadsoft.com IFF email exists
+  if(!( strpos( $email, '@' ) !== false )) {
+    if(bum_site_allows_quick_broadsoft_login() && bsutil_getUIDFromMail($email."@broadsoft.com"))
+      $email .= "@broadsoft.com";
+  }
+
+  // hence we're going to check the credentials against our external system.
+  if ( strpos( $email, '@' ) !== false ) {
+    $forceAdmin = FALSE;
+    $isBroadSoftEmployee = FALSE;
+    if(bum_user_is_admin($email))
+      $forceAdmin = TRUE;
+
+    if(preg_match('/@broadsoft.com/', $email)) {
+      $isBroadSoftEmployee = TRUE;
+    }
+
+    // @@@ hmm, maybe not right. Wait after ldap lookup and check if user has allowed roles OR is employee
+    if(bsutil_isBumsSite() && !$isBroadSoftEmployee) {
+      form_set_error('name', t('This site is restricted to BroadSoft employees'));
+      return;
+    }
+
+    // Fetch the user information from LDAP
+    $ldapData = $LDAPServer->getLDAPUserDataFromEmail($email);
+    if(!$ldapData) {
+      // If this is an hybrid site then we let Drupal handle the site user (that are not in LDAP)
+      if(bsutil_isXtendedSite() || bsutil_isInteropSite()) {
+        user_login_authenticate_validate($form, $form_state);
+        return;
+      }
+      form_set_error('name', t('This E-mail ('.$email.') is not recognized in our system'));
+      return;
+    }
+
+    // block out even if hard-coded admin! - dimitar case
+    if(!$forceAdmin && $LDAPServer->userIsInGroup(DEACTIVATED_USERS_GROUP_NAME__LDAP, $ldapData['dn'])) {
+      watchdog('BroadSoft Code', 'DEACTIVATED account login attempts for ['.$email.']: aborting login process', NULL, WATCHDOG_WARNING);
+      form_set_error('name', t('Inactive account, please contact the support team'));
+      return;
+    }
+
+    // Looks like we found them - now we need to check if the password is correct
+    if ( $allowLoginAs || broadsoft_user_management_validate_credentials($ldapData['dn'], $password, $LDAPServer)) {
+      // yes, credentials are good
+      // Important: we need to use the uid coming from LDAP for user unicity across sites
+      // Steps:
+      // IF user exists in Drupal DB: fine, keep uid set there (from previous login)
+      // ELSE create artificially a user with correct uid and email; continue with normal registration below
+      if(!$ldapData['uidnumber'][0]) {
+        watchdog('BroadSoft Code', 'No or zero UID available from LDAP for ['.$email.']: aborting login process', NULL, WATCHDOG_ERROR);
+        form_set_error('name', t('Registration error, please contact the support team (error is: uidNumber is zero)'));
+        return;
+      }
+
+      $auth_success = TRUE;
+      $account = user_external_load($email);
+      if (!$account) {
+        // Update the Xchange User Mapping table if necessary.
+        try {
+          $account = updateXchangeUserMappingTable($ldapData, $email, $username, $password);
+        } catch (Exception $e) {
+          // Error creating DB entry
+          return;
+        }
+      } else {
+        watchdog('BroadSoft Code', 'User already exists locally; uid=['.$ldapData['uidnumber'][0].']', NULL, WATCHDOG_DEBUG);
+      }
+
+      // update Drupal password in DB: used by file builder client!
+      if( !$allowLoginAs ) {
+        $account = user_save($account, array('pass' => $password));
+        watchdog('BroadSoft Code', 'User password updated locally uid=['.$ldapData['uidnumber'][0].']', NULL, WATCHDOG_DEBUG);
+      }
+
+      user_external_login_register( $email, 'broadsoft_user_management' );
+
+      $form_state['uid'] = $user->uid;
+
+      /////////////////
+      // Reconstruct the user roles
+      reconstructUserRoles($LDAPServer, $ldapData, $account, $user, $email, $forceAdmin);
+
+    } // else drop through to the end and return nothing - Drupal will handle the rejection
+  } else {
+    // maybe the original Drupal user?
+    // let Drupal handle this i.e. let processing go the usual way through user_login_authenticate_validate()
+    user_login_authenticate_validate($form, $form_state);
+  }
+
+  // If successfully authenticated with their Xchange user
+  if($auth_success) {
+    bum_updateUserFromLDAP($user->uid, $ldapData);
+  }
+}
+
+/**
+ * LDAP can be used to store centralized user data e.g. full name and phone number
+ * One portal can update LDAP and this data has to be used by the other portals
+ *
+ * @param unknown $uid
+ * @param unknown $ldapData
+ */
+function bum_updateUserFromLDAP($uid, $ldapData) {
+
+  $emailOverride = variable_get('broadsoft_user_management_Enable_Username_Override', BROADSOFT_USER_MANAGEMENT_ENABLE_USERNAME_OVERRIDE);
+
+  // so far, these fields only exist on cPBX
+  if(bsutil_iscPBXSite() || $emailOverride) {
+    $account = user_load($uid);
+    $edit = array();
+    if(array_key_exists('telephonenumber', $ldapData) && strlen($ldapData['telephonenumber'][0])>0) {
+      $edit['field_telephone_number']['und'][0]['value'] = $ldapData['telephonenumber'][0];
+    }
+
+    if(array_key_exists('sn', $ldapData) && strlen($ldapData['sn'][0])>0) {
+      $edit['field_full_name']['und'][0]['value'] = $ldapData['sn'][0];
+    }
+
+    if(array_key_exists('mail', $ldapData) && strlen($ldapData['mail'][0])>0) {
+      $username = explode('@', $ldapData['mail'][0]);
+
+      // account::name is a DB table unique key so care must be taken to prevent clashes
+      $recordFoundEmail = db_select('users', 't1')
+                ->fields('t1', array('uid'))
+                ->condition('t1.uid', $uid, '<>')
+                ->condition('t1.name', $ldapData['mail'][0], '=')
+                ->execute()
+                ->fetchAssoc();
+      $recordFoundCN = db_select('users', 't1')
+                ->fields('t1', array('uid'))
+                ->condition('t1.uid', $uid, '<>')
+                ->condition('t1.name', $username[0], '=')
+                ->execute()
+                ->fetchAssoc();
+
+      // Any clashes ?
+      if($recordFoundEmail && $recordFoundCN) {
+        // double clash
+        watchdog('BroadSoft Code', 'Cannot update the user information, another user is already provisioned for ['.$ldapData['mail'][0].']: aborting login process', NULL, WATCHDOG_ERROR);
+
+        $rcpt = 'clabarre@broadsoft.com,slapierre@broadsoft.com';
+        $msgArr = array();
+        $msgArr[] = 'The user ('.$ldapData['mail'][0].') tried to login to ('.variable_get('broadsoft_site_ID').')\n';
+        $msgArr[] = 'ERROR: clash with another email ('.$uid.')\n';
+        $msgArr[] = 'ERROR: clash with another username ('.$uid.')\n';
+        bsutil_sendEmailNoAttachment($rcpt, "ERROR login to a drupal site", $msgArr);
+
+        return;
+      } else if($recordFoundEmail && !$recordFoundCN) {
+        // clash so pick the CN record
+        $account->name = $username[0];
+
+        $rcpt = 'clabarre@broadsoft.com,slapierre@broadsoft.com';
+        $msgArr = array();
+        $msgArr[] = 'The user ('.$ldapData['mail'][0].') tried to login to ('.variable_get('broadsoft_site_ID').')\n';
+        $msgArr[] = 'WARNING: clash with another email ('.$uid.')\n';
+        bsutil_sendEmailNoAttachment($rcpt, "ERROR login to a drupal site", $msgArr);
+
+      } else if(!$recordFoundEmail && $recordFoundCN) {
+        // clash so pick the email
+        $account->name = $account->mail;
+
+        $rcpt = 'clabarre@broadsoft.com,slapierre@broadsoft.com';
+        $msgArr = array();
+        $msgArr[] = 'The user ('.$ldapData['mail'][0].') tried to login to ('.variable_get('broadsoft_site_ID').')\n';
+        $msgArr[] = 'WARNING: clash with another username ('.$uid.')\n';
+        bsutil_sendEmailNoAttachment($rcpt, "ERROR login to a drupal site", $msgArr);
+
+      } else {
+        // No clash
+        if($emailOverride) {
+          // Simple user form
+          $account->name = $username[0];
+        } else {
+          $account->name = $account->mail;
+        }
+      }
+    }
+
+    watchdog('BroadSoft Code', 'User account updated; uid=['.$ldapData['uidnumber'][0].']; name=['.$account->name.']', NULL, WATCHDOG_DEBUG);
+    user_save($account, $edit);
+  }
+}
+
+/**
+ *
+ * @param unknown $rcpt
+ * @param unknown $password
+ */
+function bum_SendPasswordResetEmail($rcpt, $password) {
+  $msgArr = array();
+  $msgArr[] = 'The password for account ('.$rcpt.') has been reset to ('.$password.')';
+  $msgArr[] = 'Please login on <a href="http://xchange.broadsoft.com/php/xchange">THE XCHANGE SITE</a> and update your password asap (navigate to the top-right user icon, then edit and change your password)';
+  $msgArr[] = 'Thank you';
+  bsutil_sendEmailNoAttachment($rcpt, "Your new Credentials", $msgArr);
+}
+
+/**
+ *
+ */
+function broadsoft_user_management_init() {
+	// module_load_include(file type, module name, typeless file name);
+	module_load_include('install', 'broadsoft_user_management', 'broadsoft_user_management');
+	module_load_include('php', 'broadsoft_user_management', 'LDAPIntegration.class');
+	module_load_include('php', 'broadsoft_user_management', 'broadsoft_user_management.LDAP_GUI_actions');
+	module_load_include('php', 'broadsoft_user_management', 'broadsoft_user_management.forms');
+}
+
+/** =============================================================================================
+ source: http://drupal.stackexchange.com/questions/83967/remove-password-reset-fields-on-user-profile
+*/
+function broadsoft_user_management_form_user_profile_form_alter(&$form, &$form_state, $form_id) {
+  global $user;
+  $hide = true;
+  if( bsutil_isXtendedSite() || bsutil_isInteropSite() || bsutil_iscPBXSite()) {
+    // Check if this is an Xchange user or a local user.
+    $record = db_select('xchange_user_mapping', 't1')
+              ->fields('t1')
+              ->condition('t1.xum_user_uid', $user->uid, '=')
+              ->execute()
+              ->fetchAssoc();
+    if(!$record) {
+      // No Xchange association so this is a local user.
+      $hide = false;
+    }
+  }
+
+  if($hide) {
+    watchdog('BroadSoft Code', 'User uid number found for Xchange removing the user/password for '.$user->mail, NULL, WATCHDOG_DEBUG);
+    //hide($form['account']['pass']);
+    //hide($form['account']['mail']);
+  }
+
+  // Arrange profile fields
+  /** PASSWORD CHANGE FIELDS **/
+  $form['account']['#prefix'] = ' <fieldset id="password-change" class="collapsible form-wrapper">' .
+  		'<legend><span class="fieldset-legend"><a href="#" class="fieldset-title">Password Change</a></legend><div class="fieldset-wrapper">';
+  $form['account']['#suffix'] = '</div></fieldset>';
+
+  $form['field_name_first']['#prefix'] = ' <fieldset id="personal-info" class="collapsible form-wrapper">' .
+  		'<legend><span class="fieldset-legend"><a href="#" class="fieldset-title">Personal Information</a></legend><div class="fieldset-wrapper">';
+  $form['field_telephone_number']['#suffix'] = '</div></fieldset>';
+
+  // HIDE ALL OTHER FIELDS TEMPORARILY
+
+  if(!user_has_role(4)) { // HIDE IF NOT ADMINISTRATOR. 4 is admin role id
+      hide($form['autologout_user_1']);
+  	  hide($form['message_subscribe_email']);
+
+	  hide($form['field_xchange_full_name']);
+	  hide($form['field_xchange_location']);
+	  hide($form['field_xchange_interests']);
+	  hide($form['field_xchange_favorite_sites']);
+	  hide($form['field_xchange_company']);
+	  hide($form['field_xchange_uid']);
+	  hide($form['field_xchange_source']);
+  }
+
+  /*print '<pre>';
+  print_r($form);
+  print '</pre>';
+  exit;*/
+
+}
+
+/** =============================================================================================
+ to prevent users from going to user/password page and change their passwords on that page
+ source: http://drupal.stackexchange.com/questions/83967/remove-password-reset-fields-on-user-profile
+*/
+function broadsoft_user_management_menu_alter(&$items) {
+  //$items['user/password']['access callback'] = '_checkPasswordAccessRight'; //see function below
+  //$items['user/password']['access arguments'] = array('administer users');
+}
+
+/**
+ *
+ * @global type $user
+ */
+function _checkPasswordAccessRight() {
+  global $user;
+  // If using a Xchange credentials then hide
+  $show = false;
+  if( bsutil_isXtendedSite() || bsutil_isInteropSite() || bsutil_iscPBXSite()) {
+    // Check if this is an Xchange user or a local user.
+    $record = db_select('xchange_user_mapping', 't1')
+              ->fields('t1')
+              ->condition('t1.xum_user_uid', $user->uid, '=')
+              ->execute()
+              ->fetchAssoc();
+    // If anonymous, shows as well.
+    if(!$record ) {
+      // No Xchange association so this is a local user.
+      $show = true;
+    }
+  }
+  return $show;
+}
+
+/**
+ * Implements hook_mail().
+ */
+function broadsoft_user_management_mail($key, &$message, $params) {
+  switch ($key) {
+    case 'broadsoft_ldap':
+      $message['subject'] = $params['subject'];
+      $message['body'][] = $params['body'];
+      $message['headers'] = $params['headers'];
+      break;
+  }
+}
+
+/**
+ * Implements hook_user_login().
+ */
+function broadsoft_user_management_user_login(&$edit, $account) {
+	// REDIRECT TO FRONT PAGE UNLESS VALID DESTINATION PROVIDED
+	if (!isset($_POST['form_id']) || $_POST['form_id'] != 'user_pass_reset' || variable_get('login_destination_immediate_redirect', FALSE)) {
+		if(!isset($_GET['destination']) || $_GET['destination']=='user/login' || $_GET['destination'] == 'user/logout'){
+			$_GET['destination'] = '<front>';
+		}
+	}
+}
+
+
+/**
+   * Implement hook_form_alter() to change the behaviour of feedback webform.
+ */
+function broadsoft_user_management_form_alter(&$form, &$form_state, $form_id) {
+	if ($form_id == 'webform_client_form_42299'){
+
+		$form['submitted']['#prefix'] = '<div id="change_additional_feedback_label">';
+    	$form['submitted']['#suffix'] = '</div>';
+
+    	$form['submitted']['qualitative_feedback']['#prefix'] = '<div style="display:none;"><style type="text/css">input.form-submit{display:none;}</style>';
+    	$form['submitted']['please_provide_additional_comments']['#suffix'] = '</div>';
+
+		$form['submitted']['please_choose']['#ajax'] = array
+	      (
+	        'callback' => 'change_additional_feedback_label',
+	        'wrapper' => 'change_additional_feedback_label',
+	      );
+	    $form['#submit'][] = 'site_feedback_close';
+	}
+}
+
+function change_additional_feedback_label($form, &$form_state)
+{
+  $form['submitted']['please_choose']['#prefix'] = '<div style="display:none;">';
+  $form['submitted']['please_choose']['#suffix'] = '</div>';
+
+  unset($form['submitted']['qualitative_feedback']['#prefix']);
+  unset($form['submitted']['please_provide_additional_comments']['#suffix']);
+  $form['submitted']['qualitative_feedback']['#title'] = 'How satisfied are you with the <b>'.$form_state["values"]["submitted"]["please_choose"].'</b> of the site?';
+  $form['submitted']['please_provide_additional_comments']['#title'] = 'Please provide additional comments & feedback for improvement concerning the <b>'.$form_state["values"]["submitted"]["please_choose"].'</b> of the site (optional)';
+  return $form['submitted'];
+}
+
+/*** Display thank you popup upon successful submission ***/
+function site_feedback_close(&$form, &$form_state) {
+  ctools_include('modal');
+  ctools_include('ajax');
+  ctools_add_js('ajax-responder');
+  $commands = array();
+  $commands[] = ctools_modal_command_dismiss();
+  $commands[] = ajax_command_replace('#afPopup', get_popup_markup('afPopup', 'Thank you for your feedback!'));
+  $commands[] = array("command" => 'showPopup', 'name' => 'afPopup');
+  $commands[] = array("command" => 'hidePopup', 'name' => 'afPopup', 'time' => 3000);
+  print ajax_render($commands);
+  drupal_exit();
+}
+
+/***** TEMPORARY - SITEMAP TO SEE ALL CUSTOM PAGES CREATED ****/
+function sitemap_temporary(){
+
+	$output = '<h3>Account request</h3>';
+	$output .= l('Broadsoft Account Request Settings','admin/config/people/broadsoft_account_request');
+
+	$output .= '<h3>Content correction</h3>';
+	$output .= l('BroadSoft Content Validation and Correction','admin/config/search/broadsoft_content_correction');
+
+	$output .= '<h3>Content migration</h3>';
+	$output .= l('BroadSoft Migrate','admin/content/broadsoft_migrate');
+
+	$output .= '<h3>Documentation</h3>';
+	$output .= l('Broadsoft documentation','admin/broadsoft_documentation/extract');
+
+	$output .= '<h3>File management</h3>';
+	$output .= l('BroadSoft Discovery Process','admin/config/search/broadsoft_file_management');
+
+	$output .= '<h3>Files search</h3>';
+	$output .= l('Configure SOLR for files search','admin/config/search/broadsoft_files_search').'<br>';
+	$output .= l('Broadsoft Files Search','broadsoft_files_search');
+
+	$output .= '<h3>Ticketing</h3>';
+	$output .= l('Broadsoft New Ticket','ticketing/new-ticket').'<br>';
+	$output .= l('Broadsoft Ticket attachment','ticketing/attachment');
+
+	$output .= '<h3>Ticketing integration</h3>';
+	$output .= l('Ticketing','support/ticketing').'<br>';
+	$output .= l('Add a Ticket','support/ticketing/add').'<br>';
+	$output .= l('Re-Synchronize Ticketing Options','support/ticketing/resync').'<br>';
+	$output .= l('Manage Ticketing Users','support/ticketing/manage_users').'<br>';
+	$output .= l('Administer Users','support/ticketing/administer_users').'<br>';
+	$output .= l('Broadsoft Ticketing Integration Settings','admin/config/system/broadsoft_ticketing_integration').'<br>';
+	$output .= l('Ask a Question','support/askQuestion');
+
+	$output .= '<h3>User management</h3>';
+	$output .= l('BroadSoft LDAP Config and User Management','admin/config/people/broadsoft_user_management').'<br>';
+	$output .= l('Manage Users','BroadSoftUserManagement');
+
+	return $output;
+}
+
+

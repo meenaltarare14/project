@@ -1,0 +1,10 @@
+; $Id:
+name = Broadsoft Software
+description = BroadSoft Software Management Utility Module. Implement thing such as: - Extension to Bulk Operations View operations to support the software download function.
+package = "Broadsoft"
+project = "Broadsoft"
+version = "7.0"
+core = "7.x"
+dependencies[] = broadsoft_utils
+dependencies[] = views_bulk_operations
+dependencies[] = download_count

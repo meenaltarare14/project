@@ -1,0 +1,69 @@
+.inner_fieldset fieldset {
+	border: 0px;
+	padding: 0em;
+	padding-left: 1em;
+	margin: 0em;
+}
+.inner_fieldset_hidden  fieldset {
+	border: 0px;
+	padding: 0em;
+	padding-left: 1em;
+	margin: 0em;
+}
+.inner_fieldset_hidden {
+	display: none;
+}
+
+/* 
+tiny MCE editor notes:
+- need to go in the tinyMCE config and add the text area div ids to have the tiny mce editor disabled by default
+- I did not find a way to completely remove the tiny MCE option besides those text areas; using css to hide them instead
+*/
+.toggletinymce {
+	display: none;
+}
+
+/*
+override theme font for text style
+*/
+.form-textarea {
+	font-family:"Courier New", Courier, monospace;
+	font-size:12px;
+	color:BLACK;
+}
+
+body {
+  line-height: 100% !important;
+}
+
+.form-item {
+  margin-top: 0.5em !important;
+  margin-bottom: 0em !important;
+}
+
+/* Fieldset wrapper around groups of form elements -- add border here */
+fieldset { 
+// (not for cpbx)  margin: 8px 0 0 0 !important; 
+  padding: 0.5em !important; 
+}
+
+html.js fieldset.collapsed {
+  margin-bottom: 8px !important;
+// (not for cpbx)  height: 0 !important;
+}
+
+td {
+  padding: 1px !important;
+}
+
+.form-radios .form-item {
+	display:inline !important;
+}
+
+.form-checkboxes, .form-radios {
+	margin: 1px 0px !important;
+}
+
+.button:hover {
+	background: #383 !important;
+}

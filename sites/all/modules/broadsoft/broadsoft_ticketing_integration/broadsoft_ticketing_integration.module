@@ -1,0 +1,3788 @@
+<?php
+include("broadsoft_ticketing_integration.user_mgmt.php");
+include("broadsoft_ticketing_integration.list_query.php");
+include("shared/broadsoft_ticketing_integration.module.shared");
+include("shared/broadsoft_ticketing_integration.journaling.php");
+include("shared/broadsoft_ticketing_integration.external_group_management.php");
+
+define('ARRAY_FIELD_PRODUCT_CATEGORY', 'product_category');
+
+/*---------------------------------------------------------------------------------------
+2 do:
+- test automation - finish
+- btbc file feature
+- update doc for TAC
+- export to csv
+---------------------------------------------------------------------------------------
+install notes on dev.50:
+
+- user_management -
+1) upload module user_management
+
+- utils -
+1) upload module utils
+2) %> drush dis broadsoft_utils
+3) mysql> DROP TABLE IF EXISTS `user_data`;
+4) mysql> delete  from system where name like '%soft_util%';
+5) %> drush en broadsoft_utils
+
+- ticketing module -
+1) upload module ticketing
+2) %> drush dis ticketing...
+3) logout-login
+4) configure module:
+- portal is cpbx = Y
+5) logout-login
+
+
+---------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------
+1) on the browser, disable ticketing module
+2) run in sql prompt
+
+delete  from system where name like '%ticket%';
+drop table ticketing_options_dependencies;
+drop table ticketing_options;
+
+
+--------------------------------------------------------------------------------------
+                         broadsoft_ticketing_integration
+                                   module
+--------------------------------------------------------------------------------------
+http://10.8.9.19/php/cpbx/support/ticketing/add
+http://localhost/php/cpbx/support/ticketing/add
+
+http://10.8.9.19/php/cpbx/support/ticketing/ticket/214295
+
+http://10.8.9.19/php/cpbx/support/ticketing/ticket/214294
+http://localhost/php/cpbx/support/ticketing/ticket/214294
+
+http://localhost/php/cpbx/support/ticketing/resync
+--------------------------------------------------------------------------------------
+cpbx manual steps:
+- role creation: all BUT Ticketing User Manager
+- set permission matrix on site
+- added user fields: http://localhost/php/cpbx/admin/config/people/accounts/fields
+  . full_name
+  . phone_nb
+--------------------------------------------------------------------------------------*/
+
+define("TICKETING_SYSTEM",  "EV");
+
+$REQUEST_LIB = "CURL"; // CURL or HTTP1 or HTTP2
+
+if($REQUEST_LIB=='HTTP1')
+;//  require_once "HTTP/Request.php";
+elseif($REQUEST_LIB=='HTTP2')
+;//  require_once "HTTP/Request2.php";
+else
+  /* CURL... no require */;
+
+define("USER_DATA__TICKETING_PREFERENCES", "TicketingPreferences");
+
+// site urls
+define("BASEURL_TICKETING_LANDING", "support/ticketing");
+define("BASEURL_ONE_TICKET",        "support/ticketing/ticket");
+define("BASEURL_TICKETING_PRESENT", "support/ticketingPresentation");
+define("BASEURL_ADD_TICKET",        "support/ticketing/add");
+define("BASEURL_RESYNC",            "support/ticketing/resync");
+define("BASEURL_MANAGE_USER",       "support/ticketing/manage_users");
+define("BASEURL_EAA_USER",          "support/ticketing/administer_users");
+define("BASEURL_TICKETING_ATTACHMENT_PROXY_URL", "ticketing/attachment");
+define("BASEURL_ASK_QUESTION",      "support/askQuestion");
+
+// vvv roles and permissions
+define("VIEW__TICKETING_PERMISSION",  "can view his groups's tickets");
+define("EDIT__TICKETING_PERMISSION",  "can edit his groups's tickets");
+define("MANAGE_GROUPS__TICKETING_PERMISSION",  "can manage ticketing groups");
+define("MANAGE_TICKETING__TICKETING_PERMISSION",  "can manage ticketing");
+define("MANAGE_TICKETING_EAA_TICKETING_PERMISSION",  "has limited EAA management rights");
+define("VIEW_GROUP_ACCESS",  "view");
+define("EDIT_GROUP_ACCESS",  "edit");
+define("VIEW__INTERNAL_DEBUG__TICKETING_PERMISSION",  "can view internal ticketing debug data");
+
+// roles: added MANUALLY through the role admin UI on Xchange
+define("ROLE_TICKETING_VIEWER",  "Ticketing Viewer");
+define("ROLE_TICKETING_EDITOR",  "Ticketing Editor");
+define("ROLE_TICKETING_ADMIN",  "Ticketing Admin");
+// ^^^ roles and permissions
+
+define("FORM_FONT_SIZE_ADD_NB",  "0"); // set to 0 to ignore
+
+define("TICKETING_SERVER_ADDRESS",  "http://avalon.extraview.net/broadsoft/ExtraView");
+define("TICKETING_USER",  "XCHANGE_API"); // default, but configured in site admin page
+define("TICKETING_PASSWORD",  "BBMA2014AU30"); //  default, but configured in site admin page
+define("TICKETING_API_TOKEN",  "onlyInDBnoDefault"); // default, but configured in site admin page
+define("TICKETING_API_USERCHECK",  "slapierre@broadsoft.com"); // default, but configured in site admin page
+define("TICKETING_API_SERVER",  "https://xchange.broadsoft.com/php/xchange"); //https://xchange.broadsoft.com/php/xchange default, but configured in site admin page
+
+define("TICKETING_UPLOAD_DIR",  "/var/broadworks/xchangeRepos/ticketing");
+define("TICKETING_UPLOAD_MAX_SIZE_MB",  "100");
+define("TICKETING_UPLOAD_MAX_ATTACHMENT_NB",  "10");
+define("TICKETING_UPLOAD_ALLOWED_EXTENSIONS", "png jpg pdf log");
+
+define("TICKETING_MAX_SELF_HELP_ITEMS_SHOWN",  "10");
+
+define("TICKETING_FIELD_TITLE_MAX_LEN",  "200");
+define("TICKETING_FIELD_DESCRIPTION_MAX_LEN",  "1000");
+define("TICKETING_FIELD_USER_COMMENT_REQUIRED", 0);
+define("NO_IDX_VALUE", "99999");
+define("TICKETING_TEXT_FIELDS_DISPLAY_LEN",  "150");
+define("TICKETING_TEXT_FIELDS_DFLT_NB_ROWS",  "5");
+define("TICKETING_TEXT_FIELDS_MAX_NB_ROWS",  "15");
+
+define("CATEGORY_BROADTOUCH_CLIENT_ID",  "23161");
+
+define("BROADSOFT_TURQUOISE_COLOR",  "#0092AC");
+define("PRE_BACKGROUND_COLOR_BROADSOFT",  "#F0FFFF");
+define("PRE_BACKGROUND_COLOR_NON_BROADSOFT",  "#FFFFCC");
+require_once(drupal_get_path('module', 'broadsoft_ticketing_integration') . '/shared/drupalJiraConnector.php');
+require_once(drupal_get_path('module', 'broadsoft_ticketing_integration') . '/shared/drupalCachedJiraConnector.php');
+require_once(drupal_get_path('module', 'broadsoft_ticketing_integration') . '/broadsoft_ticketing_integration.landing.php');
+
+define('NOT_AN_OPTION_STR', '- Please Select -');
+define('NOT_AN_OPTION_PLS_SELECT_STR', '- Please Select -');
+define('NOT_AN_OPTION_ID', 999999);
+define('FORM_ATTACHMENT_FIELD_TITLE', 'filefield');
+
+define('FORM_FIELD_TARGET_CLIENT', 'End Customer Name');
+define('FORM_FIELD_IN_COUNTRY_SUPPORT', 'In Country Support');
+define('TICKETING_API_IN_COUNTRY_SUPPORT', 'IN_COUNTRY_SUPPORT');
+define('FORM_FIELD_TITLE', 'Title');
+define('FORM_FIELD_SEVERITY', 'Severity');
+define('TICKETING_API_SEVERITY', 'SEVERITY_LEVEL');
+define('FORM_FIELD_DESCRIPTION', 'Description');
+define('FORM_FIELD_DIRECT_CUSTOMER', 'Customer Company/Group');
+define('TICKETING_API_DIRECT_CUSTOMER', 'CUSTOMER_GROUP');
+define('FORM_FIELD_ACTIONS', 'Save');
+define('FORM_FIELD_HISTORY_LOG', 'Issue Updates');
+define('FORM_FIELD_PREVIOUS_UPDATES', 'PreviousUpdates');
+define('FORM_FIELD_HISTORY_LOG_CUR_UPDATE', 'Your Update');
+define('FORM_FIELD_PRODUCT_FIELDSET', 'Product Information');
+define('FORM_FIELD_PRODUCT_CATEGORY', 'Product Category');
+define('TICKETING_API_PRODUCT_CATEGORY', 'PRODUCT_CATEGORY');
+define('FORM_FIELD_COMPONENT', 'Component');
+define('TICKETING_API_COMPONENT', 'COMPONENT');
+define('FORM_FIELD_RELEASE_FOUND', 'Release Found');
+define('TICKETING_API_RELEASE', 'REL_FOUND');
+define('FORM_FIELD_PLATFORM', 'Platform');
+define('TICKETING_API_PLATFORM', 'PLATFORM');
+define('FORM_FIELD_PROBLEM_CATEGORY', 'Problem Category');
+define('TICKETING_API_PROBLEM_CATEGORY', 'PROBLEM_CATEGORY');
+define('FORM_FIELD_SYSTEM_TYPE', 'System Type');
+define('TICKETING_API_SYSTEM_TYPE', 'SYSTEM_TYPE');
+define('FORM_FIELD_SEARCH_FIELDSET', 'Self Help');
+
+define('FORM_FIELD_CONTACT_NAME', 'Customer Contact Name');
+define('FORM_FIELD_CONTACT_NB', 'Customer Contact Number');
+define('FORM_FIELD_CUSTOMER_NOTE', 'External Tracking Number');
+define('FORM_FIELD_EMAIL_NOTIFIERS', 'Email Notification Recipient List');
+
+
+/** =============================================================================================
+* return true if user has 1+ account in hold
+* Checks if Customer Account is on AdminHold + verifies context (URL)
+* To be used by the Notice block on Xchange...
+*/
+function BTI_showAdminHoldBlock() {
+  $curUrl = url($_GET['q']);
+  if(!preg_match('/support\/ticketing/', $curUrl)) {
+    return FALSE;
+  }
+
+  if(BTI_getAdminHoldBlockStr()) {
+    return TRUE;
+  }
+
+  return FALSE;
+}
+
+/** =============================================================================================
+* returns NULL if no admin hold msg to show
+*/
+function BTI_getAdminHoldBlockStr() {
+  $ret = NULL;
+  $retTmp = NULL;
+
+  global $user;
+  $AssignedCustomerGroups = AssignedCustomerGroups($user, EDIT_GROUP_ACCESS);
+  if($AssignedCustomerGroups && count($AssignedCustomerGroups)) {
+    $UserAccountGroupData = GetUserAccountGroupData($user->uid, $user->mail);
+    foreach($AssignedCustomerGroups as $gid => $val) {
+      if(BTI_isCustomerGroupInHold($gid)) {
+        if(strlen($retTmp)) {
+          $retTmp .= ', ';
+        }
+        $retTmp .= '"'.$UserAccountGroupData['groups']['data'][$gid]['title'].'"';
+      }
+    }
+    if(strlen($retTmp)) {
+      $ret .= '<p style="text-align: center;"><span style="font-size: large; color: #ff6600;">Important Notice: the Account(s) '.$retTmp.' is/are currently on ADMIN HOLD status</span></p>';
+    }
+  }
+
+  return $ret;
+}
+
+/** =============================================================================================
+* Valid permissions for this module
+* @return An array of valid permissions for the broadsoft user management module
+*/
+function broadsoft_ticketing_integration_permission() {
+ return array(
+    VIEW__TICKETING_PERMISSION => array(
+      'title' => t(VIEW__TICKETING_PERMISSION),
+      'description' => t(VIEW__TICKETING_PERMISSION),
+    ),
+    EDIT__TICKETING_PERMISSION => array(
+      'title' => t(EDIT__TICKETING_PERMISSION),
+      'description' => t(EDIT__TICKETING_PERMISSION),
+    ),
+    MANAGE_GROUPS__TICKETING_PERMISSION => array(
+      'title' => t(MANAGE_GROUPS__TICKETING_PERMISSION),
+      'description' => t(MANAGE_GROUPS__TICKETING_PERMISSION),
+    ),
+    MANAGE_TICKETING__TICKETING_PERMISSION => array(
+      'title' => t(MANAGE_TICKETING__TICKETING_PERMISSION),
+      'description' => t(MANAGE_TICKETING__TICKETING_PERMISSION),
+    ),
+     VIEW__INTERNAL_DEBUG__TICKETING_PERMISSION => array(
+      'title' => t(VIEW__INTERNAL_DEBUG__TICKETING_PERMISSION),
+      'description' => t(VIEW__INTERNAL_DEBUG__TICKETING_PERMISSION),
+    ),
+  );
+}
+
+/** =============================================================================================
+ */
+function BTI_getAccountFromGroup($gid)
+{
+  //$result = db_query("SELECT ca.nid FROM content_type_customer_group cg, content_type_customer_account ca WHERE cg.field_customer_account_nid=ca.nid AND cg.nid='" . $gid . "'");
+  $result = db_query("SELECT ca.nid FROM field_data_field_customer_account cg, node ca WHERE ca.type = 'customer_account' and cg.field_customer_account_target_id=ca.nid AND cg.entity_id=:gid",array(":gid" => $gid));
+  if ($row = $result->fetchAssoc()) {
+    return $row['nid'];
+  }
+
+  return TRUE;
+}
+
+/** =============================================================================================
+*/
+function BTI_isCustomerGroupInHold($gid) {
+  global $user;
+  if($UserAccountGroupData = GetUserAccountGroupData($user->uid, $user->mail)) {
+    return ($UserAccountGroupData['groups']['data'][$gid]['inactive_or_admin_hold']=='true');
+  }
+}
+
+/** =============================================================================================
+ */
+function isAccountEnabledANDActive($nid) {
+  if($CustomerAccountNode = node_load($nid)) {
+    // if no sfdc id, this account is broken somehow
+    if(strlen($CustomerAccountNode->field_sfdc_id[LANGUAGE_NONE][0]['value'])==0) {
+      return FALSE;
+    } else//if($CustomerAccountNode->field_can_access_ticketing[0]['value'])
+    {
+      $statusStr = $CustomerAccountNode->field_account_status[LANGUAGE_NONE][0]['value'];
+      if(!(preg_match('/Inactive/i', $statusStr) || preg_match('/Admin Hold/i', $statusStr))) {
+        return TRUE;
+      }
+    }
+  }
+  return FALSE;
+}
+
+/** =============================================================================================
+*/
+function broadsoft_ticketing_integration_register_user($uid, $email) {
+  // fetch ticketing data from Xchange and memorize in tmp table. Then, based on that data, decide ticketing roles
+  if($UserAccountGroupData = GetUserAccountGroupData($uid, $email, TRUE)) {
+    lists_session('bti_agd'.$uid, $UserAccountGroupData); // Broadsoft TicketingIntegration _ Account Group Data
+
+    if(array_key_exists('view', $UserAccountGroupData['groups'])) {
+      if(count($UserAccountGroupData['groups']['view'])>=1) {
+        assignRole(getRidFromRoleName(ROLE_TICKETING_VIEWER), $uid);
+      } else {
+        revokeRole(getRidFromRoleName(ROLE_TICKETING_VIEWER), $uid);
+      }
+    }
+
+    if(array_key_exists('edit', $UserAccountGroupData['groups'])) {
+      if(count($UserAccountGroupData['groups']['edit'])>=1) {
+        assignRole(getRidFromRoleName(ROLE_TICKETING_EDITOR), $uid);
+      } else {
+        revokeRole(getRidFromRoleName(ROLE_TICKETING_EDITOR), $uid);
+      }
+    }
+    set_ticketing_preferences(); // sets default values for user preferences
+  }
+}
+
+/** =============================================================================================
+Sets user roles: ticketing-specific roles MANAGER, ADMIN will have been handled by the login code in broadsoft_user_management.
+Here, we need to check the associated Customer Account and potentially grant VIEW, EDIT ticketing roles if the Customer Account is
+granted ticketing access. Added BETA user role for BETA clients
+ */
+function BTI_UpdateUserRoles($uid) {
+
+  //request all group membership and content type for the user
+  $queryStr = "SELECT * FROM {ticketing_group_membership} tgm, {field_data_field_product_category} cg WHERE tgm.uid='".$uid."'
+               AND cg.field_product_category_value IN ('".BROADWORKS_GROUP_DB_VAL."','".CLIENTS_BETA_GROUP_DB_VAL."')
+               AND cg.entity_id=tgm.gid";
+
+  $result = db_query($queryStr);
+
+  $hasEnabledAccount = $hasViewTicketing = $hasEditTicketing = $hasBeta = false;
+
+  while($dbRow = $result->fetchAssoc()){
+    $thisAccountEnabled = false;
+
+    //no such field - to fix
+    //foreach account association we verify the if it has ticketing access
+    /*$queryAccountStr = "SELECT * FROM {content_type_customer_account} WHERE nid='".$dbRow['field_customer_account_nid']."' ";
+    $resultAccount = db_query($queryAccountStr);
+    while($customerAccountRow = db_fetch_object($resultAccount)){
+      if ($customerAccountRow->field_can_access_ticketing_value == '1'){
+        $hasEnabledAccount = true;
+        $thisAccountEnabled = true;
+        break;
+      }
+    }*/
+
+    // Only check the mode if the account associated has ticketing access (Can Access Ticket)
+    if( $thisAccountEnabled == true ) {
+      if($dbRow['mode'] === 'view'){
+        $hasViewTicketing = true;
+      }
+      if($dbRow['mode'] === 'edit'){
+        $hasViewTicketing = true;
+        $hasEditTicketing = true;
+      }
+    }
+
+    // Beta is independent from the Mode and the user Can Access Ticket
+    if($dbRow['field_product_category_value'] === CLIENTS_BETA_GROUP_DB_VAL){
+      $hasBeta = true;
+    }
+  }
+
+  if($hasEnabledAccount){
+
+
+
+
+    if($hasEditTicketing) {
+      assignRole(getRidFromRoleName(ROLE_TICKETING_VIEWER), $uid);
+      assignRole(getRidFromRoleName(ROLE_TICKETING_EDITOR), $uid);
+    } elseif($hasViewTicketing){
+
+
+      assignRole(getRidFromRoleName(ROLE_TICKETING_VIEWER), $uid);
+
+      revokeRole(getRidFromRoleName(ROLE_TICKETING_EDITOR), $uid);
+
+    }
+
+    if(BTI_User_is_EAA($uid)) {
+
+
+      assignRole(getRidFromRoleName(ROLE_EXTERNAL_ACCOUNT_ADMINISTRATOR), $uid);
+
+
+
+    }
+
+  } else {
+    // No ticketing access at all
+    revokeRole(getRidFromRoleName(ROLE_TICKETING_VIEWER), $uid);
+    revokeRole(getRidFromRoleName(ROLE_TICKETING_EDITOR), $uid);
+
+    if(!bs_userIsBroadSoftEmployee($uid)) {
+      revokeRole(getRidFromRoleName(ROLE_EXTERNAL_ACCOUNT_ADMINISTRATOR), $uid);
+    }
+    // not revoking admin level: this is for BroadSoft employees, they can be setup incorrectly, we do not care
+    // revokeRole(getRidFromRoleName(ROLE_TICKETING_ADMIN), $uid);
+  }
+
+  if($hasBeta){
+    assignRole(getRidFromRoleName(ROLE_BETA_USER), $uid);
+  } else {
+    revokeRole(getRidFromRoleName(ROLE_BETA_USER), $uid);
+
+  }
+}
+
+/** =============================================================================================
+  returns a string without spaces and weird chars, otherwise forms do not work well
+*/
+function BTI_cleanFormField($form_field_display_title) {
+  return preg_replace('/\W/', '', $form_field_display_title);
+}
+
+/** =============================================================================================
+hook_menu() is called rarely, such as when modules are enabled.
+If you edit a module's hook_menu(), you must visit admin/build/modules for the changes to take effect.
+*/
+function broadsoft_ticketing_integration_menu() {
+  $items = array();
+
+  $url = 'support/ticketing/get_list';
+  $items[$url] = array(
+    'page callback' => 'BTI_get_html_list',
+    'access arguments' => array("access content"), // ref.: https://drupal.org/node/109157
+    'type' => MENU_LOCAL_TASK,
+  );
+
+  $url = BASEURL_TICKETING_LANDING;
+  $items[$url] = array(
+    'title' => 'Ticketing', // menu item name and page name
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('ticketing_landing_page_form', 3),
+    'access arguments' => array(VIEW__TICKETING_PERMISSION), // ref.: https://drupal.org/node/109157
+    'type' => MENU_NORMAL_ITEM,
+    'menu_name' => 'main-menu', // in which menu
+  );
+
+  $url = BASEURL_ONE_TICKET.'/%';
+  $items[$url] = array(
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('existing_ticket_form', 3),
+    'access arguments' => array('access content'), // access is granted to everyone - BUT controlled in callback fct
+    'type' => MENU_CALLBACK,
+  );
+
+  $url = BASEURL_ADD_TICKET;
+  $items[$url] = array(
+    'title' => 'Add a Ticket', // menu item name
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('new_ticket_form'),
+    'access arguments' => array(EDIT__TICKETING_PERMISSION), // ref.: https://drupal.org/node/109157
+    'type' => MENU_NORMAL_ITEM,
+    'menu_name' => 'main-menu', // in which menu
+  );
+
+  $url = BASEURL_RESYNC;
+  $items[$url] = array(
+    'title' => 'Re-Synchronize Ticketing Options', // menu item name
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('resync_ticketing_options_form'),
+    'access arguments' => array(MANAGE_TICKETING__TICKETING_PERMISSION), // ref.: https://drupal.org/node/109157
+    'type' => MENU_NORMAL_ITEM,
+    'menu_name' => 'main-menu', // in which menu
+  );
+
+  $url = BASEURL_MANAGE_USER;
+  $items[$url] = array(
+    'title' => 'Manage Ticketing Users', // menu item name
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('BTI_manage_users'),
+    'access arguments' => array(MANAGE_TICKETING__TICKETING_PERMISSION), // ref.: https://drupal.org/node/109157
+    'type' => MENU_NORMAL_ITEM,
+    'menu_name' => 'primary-links', // in which menu
+  );
+
+  $url = BASEURL_EAA_USER;
+  $items[$url] = array(
+    'title' => 'Administer Users', // menu item name
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('BTI_administer_users'),
+    'access arguments' => array(MANAGE_TICKETING_EAA_TICKETING_PERMISSION), // ref.: https://drupal.org/node/109157
+    'type' => MENU_NORMAL_ITEM,
+    'menu_name' => 'primary-links', // in which menu
+  );
+
+  $items['admin/config/system/broadsoft_ticketing_integration']=array(
+    'title'=>'Broadsoft Ticketing Integration Settings',
+    'description'=>'Allows to configure the ticketing integration module.',
+    'page callback'=>'drupal_get_form',
+    'page arguments'=>array('broadsoft_ticketing_integration_settings'),
+    'access arguments'=>array('access administration pages'),
+    'type'=>MENU_NORMAL_ITEM,
+    'file' => 'broadsoft_ticketing_integration.admin.inc',
+  );
+
+  $items['support/ticketing/xsearch'] = array(
+    'title' => 'Dynamic Ticketing Search', // menu item name
+    'page callback' => 'dynamic_ticketing_ajax_search',
+    'access arguments' => array(EDIT__TICKETING_PERMISSION), // ref.: https://drupal.org/node/109157
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['support/ticketing/selfHelp'] = array(
+    'title' => 'Ticketing Self Help Proxying', // menu item name
+    'page callback' => 'ticketing_self_help_proxy',
+    'access arguments' => array(VIEW__TICKETING_PERMISSION), // ref.: https://drupal.org/node/109157
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['support/ticketing/xregisterAvoidedT'] = array(
+    'title' => 'Dynamic Ticketing Register Ticket Avoidance', // menu item name
+    'page callback' => 'dynamic_ticketing_ajax_register_ticket_avoidance',
+    'access arguments' => array(EDIT__TICKETING_PERMISSION), // ref.: https://drupal.org/node/109157
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['support/ticketing/xget'] = array(
+    'title' => 'Dynamic Ticketing Content', // menu item name
+    'page callback' => 'dynamic_ticketing_ajax_get',
+    'access arguments' => array(VIEW__TICKETING_PERMISSION), // ref.: https://drupal.org/node/109157
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['support/ticketing/xusrmgmt'] = array(
+    'title' => 'Dynamic Ticketing User Management', // menu item name
+    'page callback' => 'dynamic_ticketing_ajax_user_management',
+    'access arguments' => array(MANAGE_GROUPS__TICKETING_PERMISSION), // ref.: https://drupal.org/node/109157
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['support/ticketing/xusrmgmtsave'] = array(
+    'title' => 'Dynamic Ticketing User Management Save', // menu item name
+    'page callback' => 'dynamic_ticketing_ajax_user_management_save',
+    'access arguments' => array(MANAGE_GROUPS__TICKETING_PERMISSION), // ref.: https://drupal.org/node/109157
+    'type' => MENU_CALLBACK,
+  );
+
+  $url = BASEURL_ASK_QUESTION;
+  $items[$url] = array(
+    'title' => 'Ask a Question', // menu item name
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('BTI_ask_question_form'),
+    'access callback' => TRUE,
+    'type' => MENU_NORMAL_ITEM,
+    'menu_name' => 'main-menu', // in which menu
+  );
+
+  return $items;
+}
+
+/** =============================================================================================
+*/
+function makeMarkupElement($markupStr) {
+  return array(
+    '#type' => 'markup',
+    '#markup' => $markupStr,
+  );
+}
+
+/** =============================================================================================
+  Returns the javascript code to control drop down changes
+ */
+function BTI_generate_option_js($PARENT_CATEGORY_NAME, $IMPACTED_CATEGORY_NAMES, $ToBeWIPED_CATEGORY_NAMES=NULL) {
+  $retJS = "";
+
+  if(!$ToBeWIPED_CATEGORY_NAMES)
+    $ToBeWIPED_CATEGORY_NAMES = array();
+
+  // Actions done upon user change of the Parent Drop Down
+  $retJS .= '
+    function '.$PARENT_CATEGORY_NAME.'_Change(selectObj) {
+      var selectIndex = selectObj.selectedIndex;
+      var selectValue = selectObj.options[selectIndex].value;
+      ';
+  if($IMPACTED_CATEGORY_NAMES) { // can be NULL for release dropdown - then we just want the _Change fct to call the search integration
+    $i=1;
+    foreach($IMPACTED_CATEGORY_NAMES as $impactedCategoryName) {
+      $retJS .= 'var impactedDD'.$i.' = document.getElementById("'.$impactedCategoryName.'_DD");';
+      $i++;
+    }
+
+    // wipe and hide all impacted categories
+    foreach($ToBeWIPED_CATEGORY_NAMES as $ToBeWIPED_CATEGORY_NAME) {
+      $retJS .= '
+        var _div = document.getElementById("'.$ToBeWIPED_CATEGORY_NAME.'_DIV");
+        if (_div !== null) _div.style.display="none";
+        var _dd = document.getElementById("'.$ToBeWIPED_CATEGORY_NAME.'_DD");
+        _dd.options.length = 0; // wipe previous options
+        _dd.options[_dd.options.length] = new Option("'.NOT_AN_OPTION_STR.'", "'.NOT_AN_OPTION_ID.'");
+        ';
+    }
+    $i=1;
+    foreach($IMPACTED_CATEGORY_NAMES as $impactedCategoryName) {
+      $retJS .= '
+        impactedDD'.$i.'.options.length = 0;
+        impactedDD'.$i.'.options[impactedDD'.$i.'.options.length] = new Option("'.NOT_AN_OPTION_STR.'", "'.NOT_AN_OPTION_ID.'");
+        switch(selectValue) {
+        ';
+      foreach(BTI_GetAllowedOptions($PARENT_CATEGORY_NAME) as $parent_oid => $parent_name) {
+        $allowed_options = BTI_GetAllowedOptions($impactedCategoryName, $parent_oid);
+        $retJS .= 'case "'.$parent_oid.'":';
+        if(count($allowed_options)) {
+          $retJS .= '
+            var _div = document.getElementById("'.$impactedCategoryName.'_DIV");
+            if (_div !== null) _div.style.display="block";
+          ';
+        }
+        foreach($allowed_options as $allowed_oid => $allowed_name) {
+          $retJS .= 'impactedDD'.$i.'.options[impactedDD'.$i.'.options.length] = new Option("'.$allowed_name.'", "'.$allowed_oid.'");';
+        }
+        $retJS .= '        break;';
+      }
+      $retJS .= '}'; // end of switch;
+      $i++;
+    }
+  }
+
+  if(variable_get('ticketing_max_self_help_items_shown', TICKETING_MAX_SELF_HELP_ITEMS_SHOWN)>0) {
+    if($PARENT_CATEGORY_NAME==TICKETING_API_COMPONENT) {
+      $retJS .= "document.getElementById('edit-ComponentIsSet').value++;";
+      $retJS .= "maybeUpdateSearchResults();";
+    }
+    if($PARENT_CATEGORY_NAME==TICKETING_API_RELEASE) {
+      $retJS .= "document.getElementById('edit-ReleaseIsSet').value++;";
+      $retJS .= "maybeUpdateSearchResults();";
+    }
+    if($PARENT_CATEGORY_NAME==TICKETING_API_PRODUCT_CATEGORY) {
+      $retJS .= "document.getElementById('edit-ComponentIsSet').value=0;";
+      $retJS .= "document.getElementById('edit-ReleaseIsSet').value=0;";
+      $retJS .= "wipeSearchResults();";
+    }
+  }
+
+  $retJS .= '}'; // end of _Change javascript function;
+
+  return $retJS;
+}
+
+/** ============================================================================================= */
+function genTextAreaFormArray($nbRows, $length, &$markupID, $title, $description, $value, $disabled, $required, $divID=NULL) {
+  $subForm = array();
+  $subForm['markup'.$markupID++] = makeMarkupElement('<div class="ticketing-form-text">'); // to force courrier font in text areas
+  if($divID) {
+    $subForm['markup'.$markupID++] = makeMarkupElement('<div id="'.$divID.'">');
+  }
+  $subForm[BTI_cleanFormField($title)] = array(
+    '#type' => 'textarea',
+    '#id' => 'edit-'.BTI_cleanFormField($title),
+    '#title' => t($title),
+    '#cols' => TICKETING_TEXT_FIELDS_DISPLAY_LEN,
+    '#rows' => $nbRows,
+    '#disabled' => $disabled,
+    '#description' => $description,
+    '#required' => $required,
+    '#resizable' => TRUE,
+    '#value' => '',
+    );
+  if($value) {
+    $subForm[BTI_cleanFormField($title)]['#value'] = $value;
+  }
+  if($divID) {
+    $subForm['markup'.$markupID++] = makeMarkupElement('</div>');
+  }
+  $subForm['markup'.$markupID++] = makeMarkupElement('</div>');  // to force courrier font in text areas
+  return $subForm;
+}
+
+
+/** ============================================================================================= */
+function genTextFieldFormArray($size, $length, &$markupID, $title, $idx, $description, $value, $disabled, $required, $divID=NULL) {
+  $subForm = array();
+  if($divID) {
+    $subForm['markup'.$markupID++] = makeMarkupElement('<div id="'.$divID.'">');
+  }
+  $formElementId = BTI_cleanFormField($title);
+  if($idx!=NO_IDX_VALUE) {
+    $formElementId .= '_'.$idx;
+  }
+  $subForm[$formElementId] = array(
+    '#type' => 'textfield',
+    '#id' => 'edit-'.$formElementId,
+    '#title' => t($title),
+    '#size' => $size,
+    '#maxlength' => $length,
+    '#disabled' => $disabled,
+    '#description' => $description,
+    '#required' => $required,
+  );
+  if($value) {
+    $subForm[$formElementId]['#value'] = t($value);
+  }
+  if($divID) {
+    $subForm['markup'.$markupID++] = makeMarkupElement('</div>');
+  }
+  return $subForm;
+}
+
+/** ============================================================================================= */
+function genCheckboxFormArray($title, $disabled, $required, $value=NULL) {
+  $subForm = array();
+  $subForm[BTI_cleanFormField($title)] = array(
+    '#type' => 'checkbox',
+    '#id' => 'edit-'.BTI_cleanFormField($title),
+    '#title' => $title,
+    '#disabled' => $disabled,
+    '#required' => $required,
+  );
+  if($value) {
+    $subForm[BTI_cleanFormField($title)]['#default_value'] = $value;
+  }
+  return $subForm;
+}
+
+/** =============================================================================================
+  If no explicit default $selectedValue
+  AND nb of options is 1
+  Then make this option the default selected one...
+*/
+function genSelectFormArray(&$markupID, $div_ID, $class, $title, $disabled, $required, $multiple, $optionArr, $selectedValue=NULL, $setOnChangeFct=true) {
+  $subForm = array();
+  $options = BTI_MakeFormOptionArray($optionArr);
+
+  if($selectedValue) {
+    if(is_array($selectedValue)) {
+      $existing = array();
+      foreach($selectedValue as $value) {
+        $existing[$optionArr[$value]] = $value;
+      }
+    } else {
+      $existing = $selectedValue;
+    }
+  } else {
+    if(count($optionArr)==2) { // first option is always 999999, so allow that plus one real option
+      foreach($optionArr as $t => $v) {
+        if($t != NOT_AN_OPTION_ID) {
+          $existing = $t;
+        }
+      }
+    } else {
+      $existing = NOT_AN_OPTION_ID;
+    }
+  }
+
+  $subForm['markup'.$markupID++] = makeMarkupElement('<div class="'.$class.'" id="'.$div_ID.'_DIV">');
+  $subForm[$div_ID.'_DD'] = array(
+    '#type' => 'select',
+    '#id' => $div_ID.'_DD',
+    '#title' => t($title),
+    '#disabled' => $disabled,
+    '#options' => $options,
+    '#multiple' => $multiple,
+    '#required' => $required,
+    '#value' => $existing,
+    '#default_value' => $existing,
+  );
+  if($setOnChangeFct) {
+    $subForm[$div_ID.'_DD']['#attributes']['onchange'] = array($div_ID.'_Change(this);');
+  }
+  $subForm['markup'.$markupID++] = makeMarkupElement('</div>');
+  return $subForm;
+}
+
+/** ============================================================================================= */
+function genRadiosFormArray(&$markupID, $div_ID, $class, $title, $disabled, $required, $optionArr, $selectedValue=NULL) {
+  $subForm = array();
+  $subForm['markup'.$markupID++] = makeMarkupElement('<div class="'.$class.'" id="'.$div_ID.'_DIV">');
+
+  $active = array(0 => t('Closed'), 1 => t('Active'));
+  $subForm[$div_ID.'_RB'] = array(
+    '#type' => 'radios',
+    '#title' => t('Poll status'),
+    '#default_value' => isset($node->active) ? $node->active : 1,
+    '#options' => $active,
+    '#description' => t('When a poll is closed, visitors can no longer vote for it.'),
+  );
+  $subForm['markup'.$markupID++] = makeMarkupElement('</div>');
+  return $subForm;
+}
+
+/** =============================================================================================
+  apparently array_replace would do the job but it is not available in dev (pre php 5.3)
+*/
+function bs_array_replace($arr1, $arr2) {
+  $retArray = array();
+  foreach($arr1 as $key => $val) {
+    $retArray[$key] = t($val);
+  }
+  foreach($arr2 as $key => $val) {
+    $retArray[$key] = t($val);
+  }
+  return $retArray;
+}
+
+/** =============================================================================================
+  Outputs new forum question form
+*/
+function BTI_ask_question_form($form, &$form_state) {
+  $form = array();
+  $markupID = 0; // using auto-numbering for markup elements
+
+  $form['markup'.$markupID++] = makeMarkupElement("You can ask a question of the global BroadSoft community here. The Global TAC monitors this forum and we'll ensure you have a good answer within 1 business day. ");
+
+  $form['title'] = array(
+    '#type' => 'textfield',
+    '#title' => t('Question Subject'),
+    '#size' => 128,
+    '#maxlength' => 160,
+    '#required' => TRUE,
+  );
+  $form['body'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Question Details'),
+    '#required' => TRUE,
+    '#rows' => 15,
+  );
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit your Question'),
+    '#submit' => array('BTI_ask_question_form__submit'),
+  );
+
+  return $form;
+}
+
+/** =============================================================================================
+*/
+function BTI_ask_question_form__submit($form, &$form_state) {
+  global $user;
+  $node = new stdClass();
+  $node->title = $form_state['values']['title'];
+  $node->type = 'forum';
+  $node->status = 1; // Published
+  $node->comment = 2;
+  $node->format = 2;
+  $node->uid = $user->uid;
+  node_save($node);
+
+  $newterm = taxonomy_get_term_by_name('Xchange technical forum');
+  $node->body = $form_state['values']['body'];
+  $node->taxonomy = $newterm;
+  node_save($node);
+
+  $tmpArray = taxonomy_get_term_by_name('Xchange technical forum');
+  $tid = 3;// dflt val
+  if(count($tmpArray)) {
+    $tid = $tmpArray[0]->tid;
+  }
+  db_query("INSERT IGNORE INTO {forum} (nid, vid, tid) VALUES (:nid, :vid, :tid)", array(':nid' => $node->nid, ':vid' => $node->vid, ':tid' => $tid));
+
+  //bs_touchNode($node->nid);
+
+  $form_state['redirect'] = 'node/'.$node->nid;
+
+  drupal_set_message('Your question regarding "'.$form_state['values']['title'].'" will get answered within 1 business day. Thank you.', 'notice');
+
+  // Note: email is sent through a Drupal rule, configured on the site
+}
+
+/** ============================================================================================= */
+function BTI_gen_fieldset_beg($title, $title_note, $collapsed, $hidden) {
+  $str = '<fieldset id="'.BTI_cleanFormField($title).'" class="collapsible '.($collapsed?' collapsed ':' ').($hidden?' inner_fieldset_hidden ':' ').'">
+          <legend><span class="fieldset-legend">'.$title.($title_note?' <i>('.$title_note.')</i>':'').'</span></legend>
+          <div class="fieldset-wrapper">';
+  // could possibly be added: <div class="fieldset-description">Fieldset description</div>
+  return makeMarkupElement($str);
+}
+
+/** ============================================================================================= */
+function BTI_gen_fieldset_end() {
+  return makeMarkupElement('</fieldset>');
+}
+
+/** =============================================================================================
+  Outputs new ticket form
+*/
+function new_ticket_form($form_state, $form_values) {
+  $markupID = 0; // using auto-numbering for markup elements
+  $form = array();
+
+  if(blockTicketingOFFLINE()) {
+    return;
+  }
+  BTI_log_ticket_creation_start();
+  drupal_add_js('misc/form.js'); // required for collapsible fieldsets to work
+  drupal_add_js('misc/collapse.js');
+
+  global $user;
+  // additional access check verification
+  if(!(userIsAdministrator()||bsutil_user_has_role(ROLE_TICKETING_ADMIN, $user)||bsutil_user_has_role(ROLE_TICKETING_EDITOR, $user)))  {
+    drupal_set_message('You are not allowed to perform this operation', 'error');
+    return NULL;
+  }
+
+  BTI_set_base_ticketing_breadcrumb();
+
+  $AssignedCustomerGroups = AssignedCustomerGroups($user, EDIT_GROUP_ACCESS);
+
+  if(variable_get('ticketing_max_self_help_items_shown', TICKETING_MAX_SELF_HELP_ITEMS_SHOWN)>0) {
+    $JSFct = "
+      (function ($) {
+        Drupal.behaviors.broadsoft = {
+          attach: function (context, settings) {
+              $('#edit-Title').keyup(function() {
+                var s = $('#edit-Title').val();
+                setTimeout(function() {
+                  if($('#edit-Title').val() == s){ // Check the value searched is the latest one or not. This will help in making the ajax call work when client stops writing.
+                    // alert(\"1:\"+s+\":\"+$('#edit-Title').val());
+                    maybeUpdateSearchResults();
+                  }
+                }, 2000); // 2 sec delay to check.
+              }); // End of  keyup function
+         }
+       };})(jQuery);
+       ";
+    drupal_add_js($JSFct, 'inline');
+  }
+  drupal_add_js(
+    BTI_generate_option_js( TICKETING_API_PRODUCT_CATEGORY,
+                            array(TICKETING_API_COMPONENT, TICKETING_API_SYSTEM_TYPE),
+                            array(TICKETING_API_RELEASE,TICKETING_API_PLATFORM)),
+    'inline');
+  drupal_add_js(
+    BTI_generate_option_js( TICKETING_API_COMPONENT,
+                            array(TICKETING_API_RELEASE),
+                            array(TICKETING_API_PLATFORM)),
+    'inline');
+  drupal_add_js(
+    BTI_generate_option_js( TICKETING_API_RELEASE,
+                            array(TICKETING_API_PLATFORM),
+                            array(TICKETING_API_PLATFORM)),
+    'inline');
+
+  drupal_add_js(BTI_generate_file_attachment_js(), 'inline');
+
+  drupal_add_js(BTI_generate_ticket_form_validation_js(), 'inline');
+  $form['markup'.$markupID++] = makeMarkupElement('<div id="hideCover" class="hiddenCoverClass hideCoverClass"></div>');
+  drupal_add_css(drupal_get_path('module', 'broadsoft_ticketing_integration') . '/shared/hide_overlay_div.css', 'module');
+
+  drupal_add_js("
+    jQuery(document).ready(
+      function() {
+        jQuery('#PRODUCT_CATEGORY_DD').trigger('change');
+      }
+    );
+  ", 'inline');
+
+  if(count($AssignedCustomerGroups)==0) {
+    // error, in the CPBX world
+    drupal_set_message('You are not configured properly to create a ticket', 'error');
+    return NULL;
+  }
+  $gid = key($AssignedCustomerGroups);
+  $targetClientJSStr = '
+    var data = [';
+  if(array_key_exists('target_client', $AssignedCustomerGroups[$gid])) {
+    foreach($AssignedCustomerGroups[$gid]['target_client'] as $id => $val) {
+      $targetClientJSStr .= '{ value: "'.$val.'", label: "'.$val.'" },';
+    }
+  }
+  $targetClientJSStr .= '
+    ];
+    jQuery(document).ready(
+      function() {
+        jQuery("#edit-TargetClient").autocomplete({source: data});
+      }
+    );
+    ';
+  drupal_add_library ( 'system' , 'ui.autocomplete' );
+  drupal_add_js($targetClientJSStr, 'inline');
+
+  drupal_add_css(drupal_get_path('module', 'broadsoft_ticketing_integration') . '/broadsoft_ticketing_integration.css', 'module');
+
+  $account = user_load($user->uid);
+
+  $form['#attributes'] = array('enctype' => "multipart/form-data"); // required for proper file attachments processing
+
+  $form['markup'.$markupID++] = makeMarkupElement('<FONT size="+'.FORM_FONT_SIZE_ADD_NB.'">'); // for the whole form
+  $form['nextFileElementToSet'] = array( '#type' => 'hidden', '#attributes' => array('id' => 'nextFileElementToSet'), '#value' => 0); // declare hidden field to memorize which file input elements are set or not. I have not found a better way to handle this.
+
+  $form['ComponentIsSet'] = array( '#type' => 'hidden', '#attributes' => array('id' => 'edit-ComponentIsSet'), '#value' => 0); // declare hidden field to memorize which file input elements are set or not. I have not found a better way to handle this.
+  $form['ReleaseIsSet'] = array( '#type' => 'hidden', '#attributes' => array('id' => 'edit-ReleaseIsSet'), '#value' => 0); // declare hidden field to memorize which file input elements are set or not. I have not found a better way to handle this.
+
+  // ........... TITLE ...........
+  $form = array_merge(
+            $form,
+            genTextFieldFormArray(min(variable_get('ticketing_field_title_max_len', TICKETING_FIELD_TITLE_MAX_LEN), TICKETING_TEXT_FIELDS_DISPLAY_LEN),
+                                  variable_get('ticketing_field_title_max_len', TICKETING_FIELD_TITLE_MAX_LEN),
+                                  $markupID,
+                                  FORM_FIELD_TITLE,
+                                  /* idx */ NO_IDX_VALUE,
+                                  /* desc */ '',
+                                  NULL,
+                                  FALSE,
+                                  TRUE,
+                                  "TITLE_DIV") // div with ID: required for autocomplete connection
+    );
+
+  // ........... CUSTOMER-GROUP ...........
+  $severityCriticalOnly = FALSE;
+  if(count($AssignedCustomerGroups)==1) { // ==0 case already tested above
+    reset($AssignedCustomerGroups); // otherwise key() below will return null
+    $gid = key($AssignedCustomerGroups);
+    $form['__cg__'] = array( '#type' => 'hidden', '#attributes' => array('id' => '__cg__'), '#value' => $gid);
+
+    if(BTI_isCustomerGroupInHold($gid)) {
+      $severityCriticalOnly = TRUE;
+    }
+  } else {
+    // this should never occur in CPBX!!
+    $gid2titles = array();
+    foreach($AssignedCustomerGroups as $gid => $data) {
+      $gid2titles[$gid] = $data['title'];
+      if(BTI_isCustomerGroupInHold($gid)) {
+        // remember as hidden form element - will limit severity options at validation time only
+        $form['admin_hold_group_id_'.$gid] = array( '#type' => 'hidden', '#attributes' => array('id' => 'admin_hold_group_id_'.$gid), '#value' => true);
+      }
+    }
+    // create dropdown with customer-group options
+    $form = array_merge(
+              $form,
+              genSelectFormArray( $markupID,
+                                  TICKETING_API_DIRECT_CUSTOMER,
+                                  "inner_fieldset",
+                                  FORM_FIELD_DIRECT_CUSTOMER,
+                                  FALSE,
+                                  TRUE,
+                                  FALSE, /* multiple */
+                                  $gid2titles)
+              );
+
+  }
+
+  // ........... PRODUCT INFORMATION REGION ...........
+  $div_ID = BTI_cleanFormField(FORM_FIELD_PRODUCT_FIELDSET);
+  $form[$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_beg(t(FORM_FIELD_PRODUCT_FIELDSET), '', FALSE /*collapsed*/, FALSE /*hidden*/);
+
+  // div notes:
+  // id: to make a fieldset div hideable: give it an id=<category name>_DIV i.e. the _DIV should be omitted if it will never be hidden
+  // class: use inner_fieldset_hidden for hidden by default divs, otherwise use inner_fieldset
+
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<table border="0">');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<tr>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<td width="50%">');
+
+  // ........... PRODUCT CATEGORY ...........
+  //filter API_PRODUCT to Broadcloud only
+  $form[$div_ID] = array_merge(
+            $form[$div_ID],
+            genSelectFormArray( $markupID,
+                                TICKETING_API_PRODUCT_CATEGORY,
+                                "inner_fieldset", // make it hidden
+                                FORM_FIELD_PRODUCT_CATEGORY,
+                                FALSE,
+                                TRUE,
+                                FALSE, /* multiple */
+                                bs_array_replace(array(NOT_AN_OPTION_ID => NOT_AN_OPTION_PLS_SELECT_STR), BTI_GetAllowedOptions(TICKETING_API_PRODUCT_CATEGORY, $AssignedCustomerGroups[$gid]['product_category_JiraID']))
+                              )
+            );
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</td>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</tr>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<tr>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<td width="50%">');
+
+  // ........... COMPONENT ...........
+  $form[$div_ID] = array_merge(
+            $form[$div_ID],
+            genSelectFormArray( $markupID,
+                                TICKETING_API_COMPONENT,
+                                (isset($form_state["post"][TICKETING_API_PRODUCT_CATEGORY."_DD"])?"inner_fieldset":"inner_fieldset_hidden"),
+                                FORM_FIELD_COMPONENT,
+                                FALSE,
+                                TRUE,
+                                FALSE, /* multiple */
+                                BTI_GetAllowedOptions(TICKETING_API_COMPONENT))
+            );
+
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</td>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<td width="50%">');
+  // ........... PROBLEM CATEGORY ...........
+  $form[$div_ID] = array_merge(
+            $form[$div_ID],
+            genSelectFormArray( $markupID,
+                                TICKETING_API_PROBLEM_CATEGORY,
+                                "inner_fieldset",
+                                FORM_FIELD_PROBLEM_CATEGORY,
+                                FALSE,
+                                FALSE,
+                                TRUE, /* multiple */
+                                bs_array_replace(array(NOT_AN_OPTION_ID => NOT_AN_OPTION_STR), BTI_GetAllowedOptions(TICKETING_API_PROBLEM_CATEGORY)))
+            );
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</td>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</tr>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<tr>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<td width="50%">');
+  // ........... RELEASE FOUND ...........
+  // sometimes, there are NO allowed options for a given component...
+  $form[$div_ID] = array_merge(
+            $form[$div_ID],
+            genSelectFormArray( $markupID,
+                                TICKETING_API_RELEASE,
+                                (isset($form_state["post"][TICKETING_API_RELEASE."_DD"])?"inner_fieldset":"inner_fieldset_hidden"),
+                                FORM_FIELD_RELEASE_FOUND,
+                                FALSE,
+                                FALSE,
+                                FALSE, /* multiple */
+                                BTI_GetAllowedOptions(TICKETING_API_RELEASE))
+            );
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</td>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<td width="50%">');
+  // ........... SYSTEM TYPE ...........
+  $form[$div_ID] = array_merge(
+            $form[$div_ID],
+            genSelectFormArray( $markupID,
+                                TICKETING_API_SYSTEM_TYPE,
+                                  (isset($form_state["post"][TICKETING_API_SYSTEM_TYPE."_DD"])?"inner_fieldset":"inner_fieldset_hidden"),
+                                FORM_FIELD_SYSTEM_TYPE,
+                                FALSE,
+                                FALSE,
+                                FALSE, /* multiple */
+                                bs_array_replace(array(NOT_AN_OPTION_ID => NOT_AN_OPTION_STR), BTI_GetAllowedOptions(TICKETING_API_SYSTEM_TYPE)))
+            );
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</td>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</tr>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<tr>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<td width="50%">');
+
+// ........... PLATFORM ...........
+  if(isset($form_state["post"][TICKETING_API_PLATFORM."_DD"]) && ($form_state["post"][TICKETING_API_PRODUCT_CATEGORY.'_DD']==CATEGORY_BROADTOUCH_CLIENT_ID || $form_state["post"][TICKETING_API_PLATFORM."_DD"]!=NOT_AN_OPTION_ID)) {
+    $class="inner_fieldset"; // means: form was submitted but failed: this field has a value, so make it shown!
+  } else {
+    $class="inner_fieldset_hidden";
+  }
+  $form[$div_ID] = array_merge(
+            $form[$div_ID],
+            genSelectFormArray( $markupID,
+                                TICKETING_API_PLATFORM,
+                                $class,
+                                FORM_FIELD_PLATFORM,
+                                FALSE,
+                                TRUE,
+                                FALSE, /* multiple */
+                                bs_array_replace(array(NOT_AN_OPTION_ID => NOT_AN_OPTION_STR), BTI_GetAllowedOptions(TICKETING_API_PLATFORM)))
+            );
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</td>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</tr>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</table>');
+  $form[$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_end(); // for the whole form
+
+  if(variable_get('ticketing_max_self_help_items_shown', TICKETING_MAX_SELF_HELP_ITEMS_SHOWN)>0) {
+    // ........... SELF HELP ...........
+    $div_ID = BTI_cleanFormField(FORM_FIELD_SEARCH_FIELDSET);
+    $form[$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_beg(t(BTI_cleanFormField(FORM_FIELD_SEARCH_FIELDSET)), '', FALSE /*collapsed*/, TRUE /*hidden*/);
+    $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<div id="divSearchResults">'); // ajax div
+    $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</div>'); // ajax div
+    $form[$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_end();
+  }
+
+  // ........... SEVERITY ...........
+  /* A Customer shall not be able to create non-critical tickets when the their account is on Admin Hold or Inactive.  */
+  // need to manually reorder the options. Req.: Order the drop down for severity to be Critical, Major, Minor, Informational
+  $allowedSeverityOptions['CRITICAL'] = 'Critical';
+  $dfltSeverityOption = 'CRITICAL';
+  if(!$severityCriticalOnly) {
+    $allowedSeverityOptions['HIGH'] = 'Major';
+    $allowedSeverityOptions['MEDIUM'] = 'Minor';
+    $allowedSeverityOptions['LOW'] = 'Informational';
+    $dfltSeverityOption = 'LOW';
+  }
+
+  $form = array_merge(
+            $form,
+            genSelectFormArray( $markupID,
+                                TICKETING_API_SEVERITY,
+                                "inner_fieldset",
+                                FORM_FIELD_SEVERITY,
+                                FALSE,
+                                TRUE,
+                                FALSE, /* multiple */
+                                $allowedSeverityOptions,
+                                $dfltSeverityOption,
+                                false));
+
+  $criticalMessage = variable_get('ticketing_critical_contact_TAC_msg', 'Please contact TAC');
+  $criticalMsgButtonText = 'I understand';
+  $widgetID = "SEVERITY_LEVEL_DD";
+  $form['markup'.$markupID++] = makeMarkupElement(broadsoft_utils_generate_message_popup_html($criticalMessage));
+  drupal_add_css(drupal_get_path('module', 'broadsoft_utils') . '/css/message_popup.css', 'module');
+  drupal_add_js(broadsoft_utils_generate_critical_widget_js($criticalMsgButtonText, $widgetID, true), 'inline');
+
+  // ........... DESCRIPTION ...........
+  $form = array_merge(
+            $form,
+            genTextAreaFormArray( /* nbrows */      TICKETING_TEXT_FIELDS_DFLT_NB_ROWS,
+                                  /* length */      variable_get('ticketing_field_description_max_len', TICKETING_FIELD_DESCRIPTION_MAX_LEN),
+                                  /* */             $markupID,
+                                  /* title */       FORM_FIELD_DESCRIPTION,
+                                  /* desc */        '',
+                                  /* value */       NULL,
+                                  /* disabled */    FALSE,
+                                  /* required */    TRUE)
+    );
+
+  // ........... TICKET NOTES REGION ...........
+  $div_ID = 'notes';
+  $form[$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_beg(t('Ticket Notes'), '', FALSE, FALSE /*hidden*/);
+
+  // ........... TARGET CLIENT ...........
+  $form[$div_ID] = array_merge(
+            $form[$div_ID],
+            genTextFieldFormArray(60,
+                                  30,
+                                  $markupID,
+                                  FORM_FIELD_TARGET_CLIENT,
+                                  /* idx */ NO_IDX_VALUE,
+                                  /* desc */ 'Please select the End Customer Name or specify a new one if not yet in the list',
+                                  NULL,
+                                  FALSE,
+                                  FALSE,
+                                  null)
+    );
+
+  // ........... IN COUNTRY SUPPORT ...........
+  if($gid) {
+    $optArr = buildInCountryArray($AssignedCustomerGroups[$gid]);
+
+    $showInCountryDD = false;
+    if(sizeof($optArr)>1) {
+      $showInCountryDD = true;
+    } elseif(sizeof($optArr)==1) {
+      // only show if is not 'none'
+      if(reset($optArr)!='none') { // using reset because the first element id is not 0. Ref http://stackoverflow.com/questions/1921421/get-the-first-element-of-an-array
+        $showInCountryDD = true;
+      }
+    }
+
+    if($showInCountryDD) {
+      // create dropdown with customer-group options
+      $form[$div_ID] = array_merge(
+                $form[$div_ID],
+                genSelectFormArray( $markupID,
+                                    TICKETING_API_IN_COUNTRY_SUPPORT,
+                                    "inner_fieldset",
+                                    FORM_FIELD_IN_COUNTRY_SUPPORT,
+                                    FALSE,
+                                    FALSE,
+                                    FALSE, /* multiple */
+                                    $optArr,
+                                    1) // first option is default
+                );
+    }
+  }
+
+  // ........... CUSTOMER NOTE ...........
+  $form[$div_ID] = array_merge(
+            $form[$div_ID],
+            genTextFieldFormArray(/* size */        40,
+                                  /* length */      128,
+                                  /* */             $markupID,
+                                  /* title */       FORM_FIELD_CUSTOMER_NOTE,
+                                  /* idx */         NO_IDX_VALUE,
+                                  /* description */ NULL,
+                                  /* value */       NULL,
+                                  /* disabled */    FALSE,
+                                  /* required */    FALSE,
+                                  /* divID */       NULL) // div with ID: required for autocomplete connection
+  );
+  $form[$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_end();
+
+  // ........... ATTACHMENTS ...........
+  $div_ID = BTI_cleanFormField(FORM_FIELD_DIRECT_ATTACHMENTS);
+  $maxNbAttachments = variable_get('ticketing_upload_max_attachment_nb', TICKETING_UPLOAD_MAX_ATTACHMENT_NB);
+  $form[$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_beg(t(FORM_FIELD_DIRECT_ATTACHMENTS), '', FALSE /*collapsed*/, FALSE /*hidden*/);
+
+  for($i=0;$i<$maxNbAttachments;$i++) {
+    // class: use inner_fieldset_hidden for hidden by default divs, otherwise use inner_fieldset
+    // file form element itself:
+    if($i==0) {
+      $class = "inner_fieldset";
+    } else {
+      $class = "inner_fieldset_hidden";
+    }
+    $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<div class="'.$class.'" id="'.$div_ID.'_DIV_'.$i.'">');
+    $form[$div_ID][FORM_ATTACHMENT_FIELD_TITLE.$i] = array(
+        '#type' => 'file',
+        '#attributes' => array('onchange' => 'preCheckFile(this)'),
+    );
+    $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</div>');
+  }
+
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<div class="inner_fieldset_hidden" id="'.FILE_UPLOAD_PENDING_DIV.'">');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<br><FONT color="'.PENDING_UPLOAD_COLOR.'">File <b>Upload is Pending</b> Ticket Update</FONT><br><br>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</div>');
+
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<i>Attachment restrictions: maximum of '.$maxNbAttachments.' files per ticket and '.(variable_get('ticketing_upload_max_size_mb', TICKETING_UPLOAD_MAX_SIZE_MB)).'Mb per file</i>');
+
+  $form[$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_end();
+
+  // ........... CONTACT & PREFERENCES REGION ...........
+  $mandatoryContactDataAvailable = FALSE;
+  $phone_nb = '';
+  if(property_exists($account, 'field_full_name') && array_key_exists(LANGUAGE_NONE, $account->field_full_name) && array_key_exists(0, $account->field_full_name[LANGUAGE_NONE]) && array_key_exists('value', $account->field_full_name[LANGUAGE_NONE][0])) {
+    $full_name = $account->field_full_name[LANGUAGE_NONE][0]['value'];
+  }
+  if(property_exists($account, 'field_telephone_number') && array_key_exists(LANGUAGE_NONE, $account->field_telephone_number) && array_key_exists(0, $account->field_telephone_number[LANGUAGE_NONE]) && array_key_exists('value', $account->field_telephone_number[LANGUAGE_NONE][0])) {
+    $phone_nb = $account->field_telephone_number[LANGUAGE_NONE][0]['value'];
+  }
+
+  $mandatoryContactDataAvailable = (strlen($full_name) && strlen($phone_nb));
+
+  $div_ID = 'contact';
+  $title_note = '';
+  if($mandatoryContactDataAvailable) {
+    $title_note .= $full_name.' - '.$phone_nb;
+  }
+
+  $form[$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_beg(t('Contact Settings & Preferences'), $title_note, $mandatoryContactDataAvailable, FALSE /*hidden*/);
+
+  // ........... CUSTOMER CONTACT NAME ...........
+  $form[$div_ID] = array_merge(
+            $form[$div_ID],
+            genTextFieldFormArray(/* size */        40,
+                                  /* length */      128,
+                                  /* */             $markupID,
+                                  /* title */       FORM_FIELD_CONTACT_NAME,
+                                  /* idx */         NO_IDX_VALUE,
+                                  /* description */ NULL,
+                                  /* value */       $full_name,
+                                  /* disabled */    FALSE,
+                                  /* required */    TRUE,
+                                  /* divID */       NULL) // div with ID: required for autocomplete connection
+    );
+
+  // ........... CUSTOMER CONTACT NUMBER ...........
+  $form[$div_ID] = array_merge(
+            $form[$div_ID],
+            genTextFieldFormArray(/* size */        40,
+                                  /* length */      128,
+                                  /* */             $markupID,
+                                  /* title */       FORM_FIELD_CONTACT_NB,
+                                  /* idx */         NO_IDX_VALUE,
+                                  /* description */ NULL,
+                                  /* value */       $phone_nb,
+                                  /* disabled */    FALSE,
+                                  /* required */    TRUE,
+                                  /* divID */       NULL) // div with ID: required for autocomplete connection
+    );
+
+  // ........... NOTIFICATION ...........
+  $dfltNotificationListArr = GetEndUsersAssociated2Group(array('gid' => $gid, 'format' => 'array'));
+  $dfltNotificationListStr = "";
+  foreach($dfltNotificationListArr as $email) {
+    $dfltNotificationListStr .= $email."\n";
+  }
+
+  $form[$div_ID] = array_merge(
+            $form[$div_ID],
+            genTextAreaFormArray( /* nbrows */      TICKETING_TEXT_FIELDS_DFLT_NB_ROWS,
+                                  /* length */      variable_get('ticketing_field_description_max_len', TICKETING_FIELD_DESCRIPTION_MAX_LEN),
+                                  /* */             $markupID,
+                                  /* title */       FORM_FIELD_EMAIL_NOTIFIERS,
+                                  /* desc */        '',
+                                  /* value */       $dfltNotificationListStr,
+                                  /* disabled */    FALSE,
+                                  /* required */    FALSE)
+    );
+
+  $form[$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_end();
+
+  // ........... ACTION BUTTONS ...........
+  $form['open_ticket'] = array(
+    '#type' => 'submit',
+    '#value' => t('Submit'),
+    '#submit' => array('BTI_new_ticket_form__submit_open_ticket'),
+    '#attributes' => array(
+                      'onClick' => 'return JSValidateForm();',
+                      ),
+  );
+  $form['markup'.$markupID++] = makeMarkupElement('&nbsp');
+  $form['cancel'] = array(
+    '#type' => 'button',
+    '#value' => t('Cancel'),
+    '#attributes' => array('onClick' => 'location.replace("'.bs_get_site_base_path().BASEURL_TICKETING_LANDING.'"); return false;'),
+  );
+  $form['markup'.$markupID++] = makeMarkupElement('&nbsp');
+  $form['clear'] = array(
+    '#type' => 'button',
+    '#value' => t('Clear'),
+    '#attributes' => array('onClick' => 'location.replace("'.bs_get_site_base_path().BASEURL_ADD_TICKET.'"); return false;'),
+  );
+
+  $form['markup'.$markupID++] = makeMarkupElement('</FONT>'); // for the whole form
+
+  return $form;
+}
+
+/** =============================================================================================
+*/
+function ticketing_self_help_proxy() {
+  BTI_log_self_help_exploring($_GET['dest']);
+
+  $destURL = $_GET['dest'].'/selfHelp';
+  drupal_goto($destURL);
+}
+
+/** ============================================================================================= */
+function EVID2Tid($EVID) {
+  $result = db_query("SELECT tid FROM {ticketing_options} WHERE oid=':oid'", array(':oid' => $EVID));
+  if($row = $result->fetchAssoc()) {
+    return $row['tid'];
+  }
+
+  return 'All';
+}
+
+/** =============================================================================================
+// Only used in dev... solr is not available in dev so at least this returns results so we can teststuff...
+*/
+function BTI_getSearchRes_LOCAL_DB($searchText) {//D7ok
+  $resArray = array();
+  $resArray['component'] = 'n.a.';
+  $resArray['release'] = 'n.a.';
+  $resArray['title'] = $searchText;
+  $resArray['search_results'] = array();
+
+  $words = explode(' ', $searchText);
+
+  $dbquery = db_select('node', 'node')
+              ->fields('node', array('nid', 'title', 'type'));
+  foreach($words as $word) {
+    $dbquery->condition('title', '%'.db_like($word).'%', 'like');
+  }
+
+  $dbquery->range(0, variable_get('ticketing_max_self_help_items_shown', TICKETING_MAX_SELF_HELP_ITEMS_SHOWN));
+
+  $dbresult = $dbquery->execute();
+
+  if($dbresult)  {
+    foreach ($dbresult as $row) {
+      $resArray['search_results'][] = array(
+                                            "nid" => $row->nid,
+                                            "title" => $row->title,
+                                            "type" => $row->type,
+                                            "snippet" => '',
+                                          );
+    }
+  }
+  return $resArray;
+}
+
+/** =============================================================================================
+*/
+function dynamic_ticketing_ajax_search($searchString) {//D7ok
+  $resArray = array();
+  $searchStringParts = explode('_AND_', urldecode($searchString));
+  foreach($searchStringParts as $searchStringPart) {
+    $searchStringSubParts = explode('=', $searchStringPart);
+    if($searchStringSubParts[0]=='C') {
+      $component = $searchStringSubParts[1];
+    } elseif($searchStringSubParts[0]=='R') {
+      $release = $searchStringSubParts[1];
+    } elseif($searchStringSubParts[0]=='T') {
+      $searchText = $searchStringSubParts[1];
+    }
+  }
+  // for now, on our D7 sites: force local DB lookup only
+  $forceLocalDBSearch = true;
+  if($forceLocalDBSearch || developmentMode()) { // if in dev... no solr
+    $res = BTI_getSearchRes_LOCAL_DB($searchText);
+    drupal_json_output($res);
+    exit;
+  }
+
+  // ---- code below: NOT DEBUGGED ON D7 -------------------
+  // expecting:
+  $resArray['component'] = $component;
+  $resArray['release'] = $release;
+  $resArray['title'] = $searchText;
+  $resArray['search_results'] = array();
+
+  $type = "apachesolr_search";
+
+  // reimplementing part of: function search_data($searchString = NULL, $type = 'node') {
+  // ... because we do not want the search results to be themed
+  $results = NULL;
+  if (module_hook($type, 'search')) {
+    // throw search filters into $_GET: they'll be automatically grabbed by our advanced_search solr hooks
+    $_GET["BWRe"] = "|".EVID2Tid($release);
+    $_GET["BWCo"] = "|".EVID2Tid($component);
+    $_GET["MT"] = "|FaqAlerts|Forum|Documentation"; // all 3 types at once
+    $_GET["IA"] = "|All";
+
+    $results = module_invoke($type, 'search', 'search', $searchText);
+
+    $maxSuggestionsToShow = variable_get('ticketing_max_self_help_items_shown', TICKETING_MAX_SELF_HELP_ITEMS_SHOWN);
+    $i=0;
+    foreach($results as $result) {
+      if($i<$maxSuggestionsToShow) {
+        $resArray['search_results'][] = array(
+                                          "nid" => $result['node']->nid,
+                                          "title" => urlencode($result['node']->title),
+                                          "type" => $result['node']->type,
+                                          "snippet" => urlencode($result['snippet']),
+                                        );
+      }
+      $i++;
+    }
+  }
+
+  // create a JSON object. The object will contain a property named "SearchResults" that will be set with the $items variable.
+  return drupal_json($resArray);
+  exit;
+}
+
+/** =============================================================================================
+  Returns the javascript code to control drop down settings at page onload
+  Receives an array of:
+    parentCatName
+    parentSelectedOID
+    impactedCatName
+    impactedSelectedOID
+ */
+function BTI_generate_onload_js($elementsValues) {
+  $retJS = 'window.onload = function() {';
+
+  foreach($elementsValues as $element) {
+    $retJS .= '
+      var parentDD = document.getElementById("'.$element['parentCatName'].'_DD");
+      var impactedDD = document.getElementById("'.$element['impactedCatName'].'_DD");
+      impactedDD.options.length = 0;
+      impactedDD.options[impactedDD.options.length] = new Option("'.NOT_AN_OPTION_STR.'", "'.NOT_AN_OPTION_ID.'");
+      ';
+
+    // process impacted cat
+    $allowed_options = BTI_GetAllowedOptions($element['impactedCatName'], $element['parentSelectedOID']);
+    $curIndex = 1; // starts at 1 after having added the "not an option"
+    foreach($allowed_options as $allowed_oid => $allowed_name) {
+      $retJS .= 'impactedDD.options[impactedDD.options.length] = new Option("'.$allowed_name.'", "'.$allowed_oid.'");';
+      if($allowed_oid == $element['impactedSelectedOID']) {
+        $retJS .= 'impactedDD.options['.$curIndex.'].selected = true;';
+      }
+      $curIndex++;
+    }
+  }
+  $retJS .= '}'; // end of javascript function;
+
+  return $retJS;
+}
+
+
+/** =============================================================================================
+*/
+function PartnerCustomerAccountFromCustGroup($user, $gid) {
+  if($UserAccountGroupData = GetUserAccountGroupData($user->uid, $user->mail)) {
+    return $UserAccountGroupData['groups']['accounts'][$gid]['partner_account_nid'];
+  }
+
+  return NULL;
+}
+
+/** =============================================================================================
+  returns uid or 0
+
+  eventually have a evuser map in DB.
+
+Examples:
+http://avalon.extraview.net/broadsoft/ExtraView/ev_api.action?user_id=xchange&password=BBMA2014AU30&statevar=get_user_info&security_user_id=gobeam
+LOGIN_ID;GOBEAM LAST_NAME;VoIP Engineering FIRST_NAME;Covad JOB_TITLE; WORK_TELEPHONE; HOME_TELEPHONE; CELL_PHONE; FAX; PAGER; COMPANY_NAME;Covad (C10256) ADDRESS_LINE1;2510 Zanker Road ADDRESS_LINE2; CITY;San Jose STATE;CA POSTAL_CODE;95131 COUNTRY;US ENABLED_USER;Y EMAIL;voipeng@covad.com EMAIL_FORMAT;HTML DATE_FORMAT;SHORTDATETIME TIMEZONE;1 NOTIFY_ON_OWN_UPDATES;Y DRILLDOWN_REPORT;QUICKLIST ALPHA_TIMEZONE;PST TWENTY_FOUR_HOUR_TIME;N REPORT_1_ID;19221 REPORT_2_ID;19226 REPORT_3_ID;1758 HTTP_CHARSET;UTF-8 CHART_FONT;SansSerif STYLESHEET;medium MS_OFFICE_CHARSET;windows-1252 ADDITIONAL_EMAIL; ADDITIONAL_EMAIL_ON;false REGION;US VARIANT; AREA_ID;7 EMAIL_ON;true LANGUAGE;en LAST_ACCESS_DATE;java.util.GregorianCalendar[time=1405542560000,areFieldsSet=true,areAllFieldsSet=true,lenient=true,zone=sun.util.calendar.ZoneInfo[id="PST",offset=-28800000,dstSavings=3600000,useDaylight=true,transitions=185,lastRule=java.util.SimpleTimeZone[id=PST,offset=-28800000,dstSavings=3600000,useDaylight=true,startYear=0,startMode=3,startMonth=2,startDay=8,startDayOfWeek=1,startTime=7200000,startTimeMode=0,endMode=3,endMonth=10,endDay=1,endDayOfWeek=1,endTime=7200000,endTimeMode=0]],firstDayOfWeek=1,minimalDaysInFirstWeek=1,ERA=1,YEAR=2014,MONTH=6,WEEK_OF_YEAR=29,WEEK_OF_MONTH=3,DAY_OF_MONTH=16,DAY_OF_YEAR=197,DAY_OF_WEEK=4,DAY_OF_WEEK_IN_MONTH=3,AM_PM=1,HOUR=1,HOUR_OF_DAY=13,MINUTE=29,SECOND=20,MILLISECOND=0,ZONE_OFFSET=-28800000,DST_OFFSET=3600000] LOGIN_MSG_DT; PASSWORD_EXPIRY_DATE; PASSWORD_INTERVAL;0 PROJECT_ID;10 USER_DEFINED_1;VoIP Engineering USER_DEFINED_2; USER_DEFINED_4;ACTIVE USER_DEFINED_5;
+http://avalon.extraview.net/broadsoft/ExtraView/ev_api.action?user_id=xchange&password=BBMA2014AU30&statevar=get_user_info&security_user_id=phamel
+LOGIN_ID;PHAMEL LAST_NAME;Hamel FIRST_NAME;Philippe JOB_TITLE; WORK_TELEPHONE; HOME_TELEPHONE; CELL_PHONE; FAX; PAGER; COMPANY_NAME;BroadSoft Inc. ADDRESS_LINE1; ADDRESS_LINE2; CITY; STATE; POSTAL_CODE; COUNTRY; ENABLED_USER;Y EMAIL;phamel@broadsoft.com EMAIL_FORMAT;HTML DATE_FORMAT;SHORTDATETIME TIMEZONE;1 NOTIFY_ON_OWN_UPDATES;Y DRILLDOWN_REPORT;QUICKLIST ALPHA_TIMEZONE;EST5EDT TWENTY_FOUR_HOUR_TIME;N REPORT_1_ID;7129 REPORT_2_ID;11195 REPORT_3_ID;15190 HTTP_CHARSET;UTF-8 CHART_FONT;SansSerif STYLESHEET;small MS_OFFICE_CHARSET;windows-1252 ADDITIONAL_EMAIL; ADDITIONAL_EMAIL_ON;false REGION;US VARIANT; AREA_ID;7 EMAIL_ON;true LANGUAGE;en LAST_ACCESS_DATE;java.util.GregorianCalendar[time=1389881372000,areFieldsSet=true,areAllFieldsSet=true,lenient=true,zone=sun.util.calendar.ZoneInfo[id="PST",offset=-28800000,dstSavings=3600000,useDaylight=true,transitions=185,lastRule=java.util.SimpleTimeZone[id=PST,offset=-28800000,dstSavings=3600000,useDaylight=true,startYear=0,startMode=3,startMonth=2,startDay=8,startDayOfWeek=1,startTime=7200000,startTimeMode=0,endMode=3,endMonth=10,endDay=1,endDayOfWeek=1,endTime=7200000,endTimeMode=0]],firstDayOfWeek=1,minimalDaysInFirstWeek=1,ERA=1,YEAR=2014,MONTH=0,WEEK_OF_YEAR=3,WEEK_OF_MONTH=3,DAY_OF_MONTH=16,DAY_OF_YEAR=16,DAY_OF_WEEK=5,DAY_OF_WEEK_IN_MONTH=3,AM_PM=0,HOUR=6,HOUR_OF_DAY=6,MINUTE=9,SECOND=32,MILLISECOND=0,ZONE_OFFSET=-28800000,DST_OFFSET=0] LOGIN_MSG_DT; PASSWORD_EXPIRY_DATE; PASSWORD_INTERVAL;0 PROJECT_ID;10 USER_DEFINED_1;Operations USER_DEFINED_2; USER_DEFINED_4; USER_DEFINED_5;
+*/
+function mapXchangeUser($emailPart, &$isFromBroadSoft) {
+  return 0;
+}
+
+/** ===========================================================================
+*/
+function streamFileAndExitGeneric($fileFullPath, $mimetype) {
+  if(strlen($fileFullPath)>0) {
+    header($mimetype);
+    header("Content-Disposition: inline; filename=".basename($fileFullPath));
+    header("Pragma: no-cache");
+    header("Expires: 0");
+    header('Content-Length: ' . filesize($fileFullPath));
+    ob_clean();
+    flush();
+    // split in chunks only if looks too big (about 200 Mb or so... some testing would be needed here)
+    $sizeLimit_bytes = 200 * (/* 1 MB */ 1024 * 1024);
+    $size_bytes = intval(sprintf("%u", filesize($fileFullPath)));
+    if ($size_bytes > $sizeLimit_bytes) {
+      // If it's a large file, readfile might not be able to do it in one go, so:
+      $chunksize = 10 * (/* 1 MB */ 1024 * 1024); // how many bytes per chunk
+      $handle = fopen($fileFullPath, 'rb');
+      $buffer = '';
+      while (!feof($handle)) {
+        $buffer = fread($handle, $chunksize);
+        echo $buffer;
+        ob_flush();
+        flush();
+      }
+      fclose($handle);
+    } else {
+      readfile($fileFullPath);
+    }
+  }
+  exit;
+}
+
+/** =============================================================================================
+*/
+function BTI_proxy_attachment() {
+  global $user;
+
+  // get file data from GET-url
+  if(!DecodeAttachmentURL($fileID, $fileMime, $fileSize, $fileName, $ticketID)) {
+    drupal_set_message('Error streaming file', 'error');
+    drupal_goto(BASEURL_TICKETING_LANDING);
+    return;
+  }
+  $ticketingService = getTicketingService();
+  $tmpSrcDir = variable_get('ticketing_upload_dir', TICKETING_UPLOAD_DIR);
+  $localFileFullPath = $tmpSrcDir.'/'.$fileName;
+  if(file_exists($tmpSrcDir)) {
+    $local_handle = fopen($localFileFullPath, "w");
+  }
+  if(!$local_handle) {
+    // invalid path
+    $uri = 'public://TicketAttachments';
+    $path= drupal_realpath($uri);
+    $localFileFullPath = $path.'/'.$fileName;
+    $local_handle = fopen($localFileFullPath, "w");
+  }
+  fwrite($local_handle, $ticketingService->get_attached_file($fileID));
+  fclose($local_handle);
+
+  // validate size provided in GET against real size
+  $localSize = filesize($localFileFullPath);
+  if($fileSize!=$localSize) {
+    // did someone try to hijack our file proxy?
+    drupal_set_message('Error streaming file '.$fileName, 'error');
+    drupal_goto(BASEURL_ONE_TICKET.'/'.$ticketID);
+  } else {
+    streamFileAndExitGeneric($localFileFullPath, "Content-Type: ".$fileMime);
+  }
+}
+
+/** =============================================================================================
+  Reasoning behind this:
+  - we use Xchange as a file proxy, and have a dummy file-delivery node which streams files
+  - however we cannot validate access to a given file for a given user, once in that dummy node
+  - the current encoding is an attempt to make life difficult for someone who tries to edit the url and manually enter different file IDs e.g. of other customers
+  Note
+  - returns a full url
+*/
+function EncodeAttachmentURL($fileID, $fileMime, $fileSize, $fileName, $ticketID) {
+  global $user;
+  return base_path().BASEURL_TICKETING_ATTACHMENT_PROXY_URL.'?tid='.$ticketID.'&aid='.$fileID.'&size='.($fileSize+$user->uid).'&mime='.urlencode($fileMime).'&name='.urlencode($fileName);
+}
+/** =============================================================================================
+  Decodes the above...
+  Returns TRUE if URL seems good, FALSE otherwise
+*/
+function DecodeAttachmentURL(&$fileID, &$fileMime, &$fileSize, &$fileName, &$ticketID) {
+  global $user;
+  // decodes cur URL
+  // http://localhost/php/cpbx/support/ticketing/attachment?tid=214291&aid=1823907&size=8602&mime=text%2Fplain&name=bak_20140311.txt
+  $fileMime = NULL;
+  if(array_key_exists('mime', $_GET)) {
+    $fileMime = urldecode($_GET['mime']);
+  }
+
+  $fileID = NULL;
+  if(array_key_exists('aid', $_GET)) {
+    $fileID = urldecode($_GET['aid']);
+  }
+
+  $fileSize = 0;
+  if(array_key_exists('size', $_GET)) {
+    $fileSize = ($_GET['size']-$user->uid);
+  }
+
+  $fileName = NULL;
+  if(array_key_exists('name', $_GET)) {
+    $fileName = urldecode($_GET['name']);
+  }
+
+  $ticketID = NULL;
+  if(array_key_exists('tid', $_GET)) {
+    $ticketID = $_GET['tid'];
+  }
+
+  if($ticketID && strlen($fileName)>0 && $fileSize && $fileID && strlen($fileMime)>0) {
+    return TRUE;
+  }
+  return FALSE;
+}
+
+/** =============================================================================================
+  Outputs an existing ticket in a form
+  Notes:
+  - View or Edit modes both supported
+*/
+function existing_ticket_form($form_state, $form_values) {
+  $markupID = 0; // using auto-numbering for markup elements
+  $form = array();
+
+  if(blockTicketingOFFLINE()) {
+    return;
+  }
+  if(array_key_exists('args', $form_values['build_info'])) {
+    $ticketID = $form_values['build_info']['args'][0];
+  } else {
+    return NULL;
+  }
+  drupal_add_js('misc/form.js'); // required for collapsible fieldsets to work
+  drupal_add_js('misc/collapse.js');
+  global $user;
+
+  if(!(userIsAdministrator()||bsutil_user_has_role(ROLE_TICKETING_ADMIN, $user)||bsutil_user_has_role(ROLE_TICKETING_VIEWER, $user)||bsutil_user_has_role(ROLE_TICKETING_EDITOR, $user)))  {
+    drupal_goto(BASEURL_TICKETING_PRESENT);
+    return NULL;
+  }
+
+  // get ticket data using generic account - check access later on
+  $ticketingService = getTicketingService();
+  $ticket = $ticketingService->getTicket($ticketID);
+  if(!$ticket) {
+    drupal_set_message('Ticket ID '.$ticketID.' does not exist.', 'warning');
+    drupal_goto(BASEURL_TICKETING_LANDING);
+    return;
+  }else {
+    $ticketID = $ticket->getID();
+  }
+
+  if(!user_can_access_ticket($user, $ticket, VIEW_GROUP_ACCESS)) {
+    drupal_set_message('You do not have access to Ticket ID '.$ticketID, 'warning');
+    drupal_goto(BASEURL_TICKETING_LANDING);
+    return;
+  }
+
+  BTI_set_base_ticketing_breadcrumb();
+
+  drupal_add_js(
+    BTI_generate_option_js( TICKETING_API_PRODUCT_CATEGORY,
+                            array(TICKETING_API_COMPONENT, TICKETING_API_SYSTEM_TYPE),
+                            array(TICKETING_API_RELEASE,TICKETING_API_PLATFORM)),
+    'inline');
+  drupal_add_js(
+    BTI_generate_option_js( TICKETING_API_COMPONENT,
+                            array(TICKETING_API_RELEASE),
+                            array(TICKETING_API_PLATFORM)),
+    'inline');
+
+    drupal_add_js(
+    BTI_generate_option_js( TICKETING_API_RELEASE,
+                            array(TICKETING_API_PLATFORM),
+                            array(TICKETING_API_PLATFORM)),
+    'inline');
+
+  drupal_add_js(BTI_generate_file_attachment_js(), 'inline');
+
+  drupal_add_js(BTI_generate_ticket_form_validation_js(TRUE), 'inline');
+  $form['markup'.$markupID++] = makeMarkupElement('<div id="hideCover" class="hiddenCoverClass hideCoverClass"></div>');
+  drupal_add_css(drupal_get_path('module', 'broadsoft_ticketing_integration') . '/shared/hide_overlay_div.css', 'module');
+
+  drupal_add_css(drupal_get_path('module', 'broadsoft_ticketing_integration') . '/broadsoft_ticketing_integration.css', 'module');
+
+  if(user_can_access_ticket($user, $ticket, EDIT_GROUP_ACCESS)) {
+    $viewONLY = FALSE;
+  } else {
+    $viewONLY = TRUE;
+  }
+
+  if($ticket->isClosed()) {
+    $viewONLY = TRUE;
+  }
+
+  if(!$viewONLY) {
+    $elements = array();
+    $elements[] = array(  'parentCatName' => TICKETING_API_PRODUCT_CATEGORY,
+                          'parentSelectedOID' => $ticket->getProductCategoryID(),
+                          'impactedCatName' => TICKETING_API_COMPONENT,
+                          'impactedSelectedOID' => $ticket->getComponentID(),
+                        );
+    $elements[] = array(  'parentCatName' => TICKETING_API_PRODUCT_CATEGORY,
+                          'parentSelectedOID' => $ticket->getProductCategoryID(),
+                          'impactedCatName' => TICKETING_API_SYSTEM_TYPE,
+                          'impactedSelectedOID' => $ticket->getSystemTypeID(),
+                        );
+    $elements[] = array(  'parentCatName' => TICKETING_API_COMPONENT,
+                          'parentSelectedOID' => $ticket->getComponentID(),
+                          'impactedCatName' => TICKETING_API_RELEASE,
+                          'impactedSelectedOID' => $ticket->getRelFoundID(),
+                        );
+    $elements[] = array(  'parentCatName' => TICKETING_API_COMPONENT,
+                          'parentSelectedOID' => $ticket->getComponentID(),
+                          'impactedCatName' => TICKETING_API_PLATFORM,
+                          'impactedSelectedOID' => $ticket->getPlatformID(),
+                        );
+    $elements[] = array(  'parentCatName' => TICKETING_API_RELEASE,
+                        'parentSelectedOID' => $ticket->getRelFoundID(),
+                        'impactedCatName' => TICKETING_API_PLATFORM,
+                        'impactedSelectedOID' => $ticket->getPlatformID(),
+                      );
+    drupal_add_js(BTI_generate_onload_js($elements), 'inline');
+  }
+
+  $form['#attributes'] = array('enctype' => "multipart/form-data"); // required for proper file attachments processing
+  $form['ticketID'] = array( '#type' => 'hidden', '#attributes' => array('id' => 'ticketID'), '#value' => $ticketID);
+  $form['transitions'] = array( '#type' => 'hidden','#attributes' => array('id' => 'transitionsID'), '#value' => json_encode($ticketingService->getAvailableTransitionsNumbers($ticket->getTransitions())));
+  $form['markup'.$markupID++] = makeMarkupElement('<FONT size="+'.FORM_FONT_SIZE_ADD_NB.'">'); // for the whole form
+
+  $div_ID = 'TopSummary';
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<FONT size="+1" color="'.BROADSOFT_TURQUOISE_COLOR.'">'.$ticketID.'</FONT>&nbsp&nbsp<FONT size="+1"><b>'.$ticket->getTitle().'</b></FONT><br>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<br><FONT color="'.BROADSOFT_TURQUOISE_COLOR.'" title="Ticket Severity">'.$ticket->getSeverity().'</FONT>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('&nbsp&nbsp-&nbsp&nbsp');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<FONT color="'.BROADSOFT_TURQUOISE_COLOR.'" title="Current Ticket Status">'.$ticket->getStatus().'</FONT>');
+  if($curAssignee = $ticket->getOwner()) {
+    $xuid = mapXchangeUser($ticket->getOwner(), $isFromBroadSoft);
+    if($xuid) {
+      $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('&nbsp&nbsp-&nbsp&nbspassigned to: ');
+      $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<FONT color="'.BROADSOFT_TURQUOISE_COLOR.'" title="Current Assignee"><a target="_blank" href="'.bs_get_site_base_path().'user/'.$xuid.'">'.$curAssignee.'</a></FONT>');
+    }
+  }
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<br>');
+
+  // all form control buttons
+  if(!$viewONLY && !$ticket->isClosed()) {
+    $div_ID = BTI_cleanFormField(FORM_FIELD_ACTIONS);
+    $form[$div_ID] = genTextAreaFormArray(/* nbrows */      TICKETING_TEXT_FIELDS_DFLT_NB_ROWS,
+                                          /* length */      variable_get('ticketing_field_description_max_len', TICKETING_FIELD_DESCRIPTION_MAX_LEN),
+                                          /* */             $markupID,
+                                          /* title */       FORM_FIELD_HISTORY_LOG_CUR_UPDATE,
+                                          /* desc */        '',
+                                          /* value */       NULL,
+                                          /* disabled */    $viewONLY,
+                                          /* required */    variable_get('ticketing_field_user_comment_required', TICKETING_FIELD_USER_COMMENT_REQUIRED)
+      );
+
+    //... see state chart https://home.unite.broadsoft.com/pages/viewpage.action?title=Migration+of+Problem+Reports&spaceKey=IS
+
+    // NOTE : all these buttons are DUPLICATED below
+    // vvvvv BEG existing ticket buttons
+    if($ticket->isOpened()) {
+      $form[$div_ID]['markup'.$markupID++] = array(
+        '#type' => 'submit',
+        '#value' => t('Update Ticket'),
+        '#submit' => array('BTI_existing_ticket_form__submit_status2UNCHANGED'),
+        '#attributes' => array(
+                          'title' => "Saves your changes and leaves the ticket status unchanged", // mouse over help
+                          'onClick' => 'return JSValidateForm();',
+                          ),
+
+      );
+      if(!$ticket->isNew()){
+        $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('&nbsp');
+        $form[$div_ID]['markup'.$markupID++] = array(
+          '#type' => 'submit',
+          '#value' => t('Update to Pending Customer'), // was 'Update & Hold'
+          '#submit' => array('BTI_existing_ticket_form__submit_status2PENDINGCUSTOMER'),
+          '#attributes' => array(
+                            'title' => "Saves your changes and updates the ticket status to PENDING CUSTOMER", // mouse over help
+                            'onClick' => 'return JSValidateForm();',
+                            ),
+        );
+      }
+      $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('&nbsp');
+      $form[$div_ID]['markup'.$markupID++] = array(
+        '#type' => 'submit',
+        '#value' => t('Update & Close'),
+        '#submit' => array('BTI_existing_ticket_form__submit_status2CLOSED'),
+        '#attributes' => array(
+                          'title' => "Saves your changes and updates the ticket status to CLOSED", // mouse over help
+                          'onClick' => 'return JSValidateForm();',
+                          ),
+      );
+    }
+    //... see state chart https://home.unite.broadsoft.com/pages/viewpage.action?title=Migration+of+Problem+Reports&spaceKey=IS
+    elseif($ticket->isPendingCustomer()) {
+      $form[$div_ID]['markup'.$markupID++] = array(
+        '#type' => 'submit',
+        '#value' => t('Update Ticket'),
+        '#submit' => array('BTI_existing_ticket_form__submit_status2UNCHANGED'),
+        '#attributes' => array(
+                          'title' => "Saves your changes and leaves the ticket status unchanged", // mouse over help
+                          'onClick' => 'return JSValidateForm();',
+                          ),
+      );
+      $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('&nbsp');
+      $form[$div_ID]['markup'.$markupID++] = array(
+        '#type' => 'submit',
+        '#value' => t('Update & Return to TAC'), // was 'Update & Return'
+        '#submit' => array('BTI_existing_ticket_form__submit_status2OPEN'),
+        '#attributes' => array(
+                          'title' => "Saves your changes and updates the ticket status to OPEN", // mouse over help
+                          'onClick' => 'return JSValidateForm();',
+                          ),
+      );
+      $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('&nbsp');
+      $form[$div_ID]['markup'.$markupID++] = array(
+        '#type' => 'submit',
+        '#value' => t('Update & Close'),
+        '#submit' => array('BTI_existing_ticket_form__submit_status2CLOSED'),
+        '#attributes' => array(
+                          'title' => "Saves your changes and updates the ticket status to CLOSED", // mouse over help
+                          'onClick' => 'return JSValidateForm();',
+                          ),
+      );
+    }
+    //... see state chart https://home.unite.broadsoft.com/pages/viewpage.action?title=Migration+of+Problem+Reports&spaceKey=IS
+    elseif($ticket->isPendingClosure()) {
+      $form[$div_ID]['markup'.$markupID++] = array(
+        '#type' => 'submit',
+        '#value' => t('Update Ticket'),
+        '#submit' => array('BTI_existing_ticket_form__submit_status2UNCHANGED'),
+        '#attributes' => array(
+                          'title' => "Saves your changes and leaves the ticket status unchanged", // mouse over help
+                          'onClick' => 'return JSValidateForm();',
+                          ),
+      );
+      $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('&nbsp');
+      $form[$div_ID]['markup'.$markupID++] = array(
+        '#type' => 'submit',
+        '#value' => t('Update & Return to TAC'), // was 'Update & Return'
+        '#submit' => array('BTI_existing_ticket_form__submit_status2OPEN'),
+        '#attributes' => array(
+                          'title' => "Saves your changes and updates the ticket status to OPEN", // mouse over help
+                          'onClick' => 'return JSValidateForm();',
+                          ),
+      );
+      $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('&nbsp');
+      $form[$div_ID]['markup'.$markupID++] = array(
+        '#type' => 'submit',
+        '#value' => t('Update & Close'),
+        '#submit' => array('BTI_existing_ticket_form__submit_status2CLOSED'),
+        '#attributes' => array(
+                          'title' => "Saves your changes and updates the ticket status to CLOSED", // mouse over help
+                          'onClick' => 'return JSValidateForm();',
+                          ),
+      );
+    }
+  }
+
+  // ........... ISSUE UPDATE ...........
+  $previousUpdatesDIVId = FORM_FIELD_PREVIOUS_UPDATES.'_DIV';
+  $ChangeHistoryArr = $ticket->getChangeHistory();
+  if($ChangeHistoryArr && count($ChangeHistoryArr)>=1) {
+    $entryNb = 0;
+    foreach(array_reverse($ChangeHistoryArr) as $entry) {
+      if($entryNb==0) {
+        $updateArr = BTI_parseEmbeddedXUID($entry);
+        $form['markup'.$markupID++] = makeMarkupElement('<br><br><b>Latest Update</b>: '.$updateArr['user_display_str'].' on '.date("M j, Y, g:i a", $entry['timestamp']).':<br><br>');
+        mapXchangeUser($updateArr['mail'], $isFromBroadSoft);
+        if($isFromBroadSoft) {
+          $preBkgColor = PRE_BACKGROUND_COLOR_BROADSOFT;
+        } else {
+          $preBkgColor = PRE_BACKGROUND_COLOR_NON_BROADSOFT;
+        }
+        // pre-wrapping: tested with success in Chrome, FF and IE9
+        $form['markup'.$markupID++] = makeMarkupElement('<pre style="white-space:pre-line;"><div style="background-color:'.$preBkgColor.'">'.$updateArr['original_comment'].'</div></pre>');
+
+        // show/hide buttons
+        if(count($ChangeHistoryArr)>1) {
+          $form['markup'.$markupID++] = makeMarkupElement('
+              <br><input id="showhidebutton" class="form-submit button" type="button" value="Show Previous Updates"
+                onclick="
+                  var curState = document.getElementById(\'showhidebutton\').value;
+                  var display = \'none\';
+                  if(curState==\'Show Previous Updates\') {
+                    document.getElementById(\'showhidebutton\').value = \'Hide Previous Updates\';
+                    display = \'block\';
+                  } else {
+                    document.getElementById(\'showhidebutton\').value = \'Show Previous Updates\';
+                  }
+                  var more=true;
+                  var idx=1;
+                  do {
+                    var rowID = \''.$previousUpdatesDIVId.'\'+idx;
+                    var rowEl = document.getElementById(rowID);
+                    if(rowEl) {
+                      rowEl.style.display = display;
+                      idx++;
+                    } else {
+                      more=false;
+                    }
+                  } while(more);
+                " />');
+        } else {
+          $form['markup'.$markupID++] = makeMarkupElement('<br><i>There are no other past Updates</i>');
+        }
+      } else {
+        // 1+ past updates
+        $form['markup'.$markupID++] = makeMarkupElement('<div id="'.$previousUpdatesDIVId.$entryNb.'" style="display: none;">'); // no need for tr id for first one
+
+        $updateArr = BTI_parseEmbeddedXUID($entry);
+        $form['markup'.$markupID++] = makeMarkupElement('<br>'.$updateArr['user_display_str'].' on '.date("M j, Y, g:i a", $entry['timestamp']).':<br><br>');
+        mapXchangeUser($updateArr['mail'], $isFromBroadSoft);
+        if($isFromBroadSoft) {
+          $preBkgColor = PRE_BACKGROUND_COLOR_BROADSOFT;
+        } else {
+          $preBkgColor = PRE_BACKGROUND_COLOR_NON_BROADSOFT;
+        }
+        $form['markup'.$markupID++] = makeMarkupElement('<pre style="white-space:pre-line;"><div style="background-color:'.$preBkgColor.'">'.$updateArr['original_comment'].'</div></pre>');
+
+        $form['markup'.$markupID++] = makeMarkupElement('</div>');
+      }
+      $entryNb++;
+    }
+  }
+
+  // ........... ATTACHMENTS ...........
+  $attachmentArr = $ticket->getAttachmentArr();
+  $form['nextFileElementToSet'] = array( '#type' => 'hidden', '#attributes' => array('id' => 'nextFileElementToSet'), '#value' => count($attachmentArr)); // declare hidden field to memorize which file input elements are set or not. I have not found a better way to handle this.
+  $div_ID = BTI_cleanFormField(FORM_FIELD_DIRECT_ATTACHMENTS);
+  $form[$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_beg(t(FORM_FIELD_DIRECT_ATTACHMENTS), '', ((count($attachmentArr)==0)?TRUE:FALSE) /*collapsed*/, FALSE /*hidden*/);
+
+  if(count($attachmentArr)==0) {
+    $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<div id="'.$div_ID.'_DIV">');
+    $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<i>No attachment</i>');
+    $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</div>');
+  } else {
+    $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<table border="0">');
+
+    $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<tr>');
+    $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<th width="60%">File Name</th>');
+    $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<th>Upload Date</th>');
+    $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<th>File Size</th>');
+    $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</tr>');
+
+    $i=0;
+    foreach($attachmentArr as $key => $attachment) {
+      if(strlen($attachment['fileName'])) {
+        if($i++%2==0) {
+          $class_str = 'class="even"';
+        } else {
+          $class_str = 'class="odd"';
+        }
+        $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<tr '.$class_str.'>');
+        $attachmentURL = EncodeAttachmentURL($attachment['fileid'], $attachment['mime'], $attachment['fileSize'], $attachment['fileName'], $ticketID);
+        $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<td><a target="_blank" href="'.$attachmentURL.'">'.$attachment['fileName'].'</a></td>');
+        $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<td>'.$attachment['addedDate'].'</td>');
+        $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<td>'.formatSizeUnits($attachment['fileSize']).'</td>');
+        $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</tr>');
+      }
+    }
+    $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</table>');
+  }
+
+  if(!$viewONLY) {
+    $maxNbAttachments = variable_get('ticketing_upload_max_attachment_nb', TICKETING_UPLOAD_MAX_ATTACHMENT_NB);
+
+    for($i=0;$i<$maxNbAttachments;$i++) {
+      // class: use inner_fieldset_hidden for hidden by default divs, otherwise use inner_fieldset
+      // file description form element:
+
+      if($i==0) {
+        $class = "inner_fieldset";
+      } else {
+        $class = "inner_fieldset_hidden";
+      }
+      $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<div class="'.$class.'" id="'.$div_ID.'_DIV_'.$i.'">');
+      $form[$div_ID][FORM_ATTACHMENT_FIELD_TITLE.$i] = array(
+        '#name' => 'files['.FORM_ATTACHMENT_FIELD_TITLE.$i.']',
+        '#type' => 'file',
+        '#size' => 22,
+        '#attributes' => array('onchange' => 'preCheckFile(this)'),
+      );
+      $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</div>');
+    }
+  }
+
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<div class="inner_fieldset_hidden" id="'.FILE_UPLOAD_PENDING_DIV.'">');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<br><FONT color="'.PENDING_UPLOAD_COLOR.'">File <b>Upload is Pending</b> Ticket Update</FONT><br><br>');
+  $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('</div>');
+
+  if(!$viewONLY)  {
+    $form[$div_ID]['markup'.$markupID++] = makeMarkupElement('<i>Attachment restrictions: maximum of '.$maxNbAttachments.' files per ticket and '.(variable_get('ticketing_upload_max_size_mb', TICKETING_UPLOAD_MAX_SIZE_MB)).'Mb per file</i>');
+  }
+
+  $form[$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_end();
+
+  // ........... TICKET DETAILS ...........
+  $divDetail_ID = 'TICKET_DETAILS';
+  $form[$divDetail_ID]['markup'.$markupID++] = BTI_gen_fieldset_beg(t('Ticket Details'), '', TRUE /*collapsed*/, FALSE /*hidden*/);
+
+  // ........... TITLE ...........
+  $form[$divDetail_ID] = array_merge(
+            $form[$divDetail_ID],
+            genTextFieldFormArray(/* size */        min(variable_get('ticketing_field_title_max_len', TICKETING_FIELD_TITLE_MAX_LEN), TICKETING_TEXT_FIELDS_DISPLAY_LEN),
+                                  /* length */      variable_get('ticketing_field_title_max_len', TICKETING_FIELD_TITLE_MAX_LEN),
+                                  /* */             $markupID,
+                                  /* title */       FORM_FIELD_TITLE,
+                                  /* idx */         NO_IDX_VALUE,
+                                  /* description */ '',
+                                  /* value */       $ticket->getTitle(),
+                                  /* disabled */    $viewONLY,
+                                  /* required */    !$viewONLY,
+                                  /* divID */       "TITLE_DIV") // div with ID: required for autocomplete connection
+  );
+
+  // ........... SEVERITY ...........
+  // need to manually reorder the options. Req.: Order the drop down for severity to be Critical, Major, Minor, Informational
+  $allowedSeverityOptions['CRITICAL'] = 'Critical';
+  $allowedSeverityOptions['HIGH'] = 'Major';
+  $allowedSeverityOptions['MEDIUM'] = 'Minor';
+  $allowedSeverityOptions['LOW'] = 'Informational';
+  $form[$divDetail_ID] = array_merge(
+            $form[$divDetail_ID],
+            genSelectFormArray( $markupID,
+                                TICKETING_API_SEVERITY,
+                                "inner_fieldset",
+                                FORM_FIELD_SEVERITY,
+                                $viewONLY,
+                                !$viewONLY,
+                                FALSE, /* multiple */
+                                $allowedSeverityOptions,
+                                $ticket->getSeverityID()));
+
+  // ........... DESCRIPTION ...........
+  $descTxt = $ticket->getDescription();
+  $displayNbRows = min(count(explode(PHP_EOL, $descTxt))-1, TICKETING_TEXT_FIELDS_MAX_NB_ROWS);
+  $form[$divDetail_ID] = array_merge(
+            $form[$divDetail_ID],
+            genTextAreaFormArray( /* nbrows */      $displayNbRows, // size it to actual nb of rows, up to TICKETING_TEXT_FIELDS_MAX_NB_ROWS
+                                  /* length */      variable_get('ticketing_field_description_max_len', TICKETING_FIELD_DESCRIPTION_MAX_LEN),
+                                  /* */             $markupID,
+                                  /* title */       FORM_FIELD_DESCRIPTION,
+                                  /* desc */        '',
+                                  /* value */       $descTxt,
+                                  /* disabled */    $viewONLY,
+                                  /* required */    !$viewONLY)
+          );
+
+  // ........... PRODUCT INFORMATION REGION ...........
+  $div_ID = BTI_cleanFormField(FORM_FIELD_PRODUCT_FIELDSET);
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_beg(t(FORM_FIELD_PRODUCT_FIELDSET), '', TRUE /*collapsed*/, FALSE /*hidden*/);
+
+  // div notes:
+  // id: to make a fieldset div hideable: give it an id=<category name>_DIV i.e. the _DIV should be omitted if it will never be hidden
+  // class: use inner_fieldset_hidden for hidden by default divs, otherwise use inner_fieldset
+
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<table border="0">');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<tr>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<td width="50%">');
+
+  // ........... PRODUCT CATEGORY ...........
+  $productCategoryPair = $ticket->getProductCategoryPair();
+  $form[$divDetail_ID][$div_ID] = array_merge(
+            $form[$divDetail_ID][$div_ID],
+            genSelectFormArray( $markupID,
+                                TICKETING_API_PRODUCT_CATEGORY,
+                                "inner_fieldset", // make it hidden
+                                FORM_FIELD_PRODUCT_CATEGORY,
+                                $viewONLY,
+                                !$viewONLY,
+                                FALSE, /* multiple */
+                                BTI_GetAllowedOptions(TICKETING_API_PRODUCT_CATEGORY, $productCategoryPair['Product']),
+                                $ticket->getProductCategoryID())
+            );
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</td>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</tr>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<tr>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<td width="50%">');
+
+// ........... COMPONENT ...........
+  if($ticket->getComponentID() || isset($form_state["post"][TICKETING_API_COMPONENT."_DD"])) {
+    $class="inner_fieldset";
+  } else {
+    $class="inner_fieldset_hidden";
+  }
+  $form[$divDetail_ID][$div_ID] = array_merge(
+            $form[$divDetail_ID][$div_ID],
+            genSelectFormArray( $markupID,
+                                TICKETING_API_COMPONENT,
+                                $class,
+                                FORM_FIELD_COMPONENT,
+                                $viewONLY,
+                                FALSE, /* required */
+                                FALSE, /* multiple */
+                                bs_array_replace(array(NOT_AN_OPTION_ID => NOT_AN_OPTION_STR), BTI_GetAllowedOptions(TICKETING_API_COMPONENT)),
+                                $ticket->getComponentID())
+            );
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</td>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<td width="50%">');
+  // ........... PROBLEM CATEGORY ...........
+  $class="inner_fieldset"; // always show, even if not set
+  $form[$divDetail_ID][$div_ID] = array_merge(
+            $form[$divDetail_ID][$div_ID],
+            genSelectFormArray( $markupID,
+                                TICKETING_API_PROBLEM_CATEGORY,
+                                "inner_fieldset",
+                                FORM_FIELD_PROBLEM_CATEGORY,
+                                $viewONLY,
+                                FALSE,
+                                TRUE, /* multiple */
+                                bs_array_replace(array(NOT_AN_OPTION_ID => NOT_AN_OPTION_STR), BTI_GetAllowedOptions(TICKETING_API_PROBLEM_CATEGORY)),
+                                $ticket->getProblemCategoryID())
+            );
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</td>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</tr>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<tr>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<td width="50%">');
+  // ........... RELEASE FOUND ...........
+  // sometimes, there are NO allowed options for a given component...
+  if($ticket->getRelFoundID() || isset($form_state["post"][TICKETING_API_RELEASE."_DD"])) {
+    $class="inner_fieldset";
+  } else {
+    $class="inner_fieldset_hidden";
+  }
+  $form[$divDetail_ID][$div_ID] = array_merge(
+            $form[$divDetail_ID][$div_ID],
+            genSelectFormArray( $markupID,
+                                TICKETING_API_RELEASE,
+                                $class,
+                                FORM_FIELD_RELEASE_FOUND,
+                                $viewONLY,
+                                FALSE,
+                                FALSE, /* multiple */
+                                BTI_GetAllowedOptions(TICKETING_API_RELEASE), //@@@ add no option??
+                                $ticket->getRelFoundID())
+            );
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</td>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<td width="50%">');
+  // ........... SYSTEM TYPE ...........
+  $class="inner_fieldset"; // always show, even if not set
+  $form[$divDetail_ID][$div_ID] = array_merge(
+            $form[$divDetail_ID][$div_ID],
+            genSelectFormArray( $markupID,
+                                TICKETING_API_SYSTEM_TYPE,
+                                $class,
+                                FORM_FIELD_SYSTEM_TYPE,
+                                $viewONLY,
+                                FALSE,
+                                FALSE, /* multiple */
+                                bs_array_replace(array(NOT_AN_OPTION_ID => NOT_AN_OPTION_STR), BTI_GetAllowedOptions(TICKETING_API_SYSTEM_TYPE)),
+                                $ticket->getSystemTypeID())
+            );
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</td>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</tr>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<tr>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<td width="50%">');
+
+  // ........... PLATFORM ...........
+  if($ticket->getPlatformID() || (isset($form_state["post"][TICKETING_API_PLATFORM."_DD"]) && ($form_state["post"][TICKETING_API_PRODUCT_CATEGORY.'_DD']==CATEGORY_BROADTOUCH_CLIENT_ID || $form_state["post"][TICKETING_API_PLATFORM."_DD"]!=NOT_AN_OPTION_ID))) {
+    $class="inner_fieldset";
+  } else {
+    $class="inner_fieldset_hidden";
+  }
+  $form[$divDetail_ID][$div_ID] = array_merge(
+            $form[$divDetail_ID][$div_ID],
+            genSelectFormArray( $markupID,
+                                TICKETING_API_PLATFORM,
+                                $class,
+                                FORM_FIELD_PLATFORM,
+                                $viewONLY,
+                                !$viewONLY,
+                                FALSE, /* multiple */
+                                bs_array_replace(array(NOT_AN_OPTION_ID => NOT_AN_OPTION_STR), BTI_GetAllowedOptions(TICKETING_API_PLATFORM)),
+                                $ticket->getPlatformID())
+            );
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</td>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</tr>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</table>');
+
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_end();
+
+  // ........... TICKET NOTES REGION ...........
+  $div_ID = 'notes';
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_beg(t('Ticket Notes'), '', FALSE, FALSE /*hidden*/);
+
+  // ........... TARGET CLIENT ...........
+  $form[$divDetail_ID][$div_ID] = array_merge(
+            $form[$divDetail_ID][$div_ID],
+            genTextFieldFormArray(/* size */        40,
+                                  /* length */      128,
+                                  /* */             $markupID,
+                                  /* title */       FORM_FIELD_TARGET_CLIENT,
+                                  /* idx */         NO_IDX_VALUE,
+                                  /* description */ NULL,
+                                  /* value */       $ticket->getCustomerNote(),
+                                  /* disabled */    $viewONLY,
+                                  /* required */    FALSE,
+                                  /* divID */       NULL) // div with ID: required for autocomplete connection
+    );
+
+
+  // ........... IN COUNTRY SUPPORT ...........
+  // must have a gid for this one!!! Not available in this context
+  // try to find it from ticket data
+  $ticket_originator = $ticket->getOriginator();
+  $ticket_customer = $ticket->getCustomerCompany();
+  $UserAccountGroupData = GetUserAccountGroupData($user->uid, $user->mail);
+  $selected_gid = 0;
+  foreach($UserAccountGroupData['groups']['view'] as $gid => $gdata) {
+    if($gdata['jira_originator']==$ticket_originator && $gdata['jira_customer']==$ticket_customer) {
+      $selected_gid = $gid;
+    }
+  }
+  if($selected_gid) {
+    $optArr = buildInCountryArray($UserAccountGroupData['groups']['data'][$selected_gid]);
+    if(sizeof($optArr)>1) {
+      if(array_search ($ticket->getInCountry(),$optArr)>0){
+        $selected = array_search ($ticket->getInCountry(),$optArr);
+      } else {
+        $selected =1;
+      }
+      // create dropdown with customer-group options
+      $form[$divDetail_ID][$div_ID] = array_merge(
+                $form[$divDetail_ID][$div_ID],
+                genSelectFormArray( $markupID,
+                                    TICKETING_API_IN_COUNTRY_SUPPORT,
+                                    "inner_fieldset",
+                                    FORM_FIELD_IN_COUNTRY_SUPPORT,
+                                    FALSE,
+                                    FALSE,
+                                    FALSE, // multiple
+                                    $optArr,
+                                    $selected)
+                );
+    }
+  }
+
+  // ........... CUSTOMER NOTE ...........
+  $form[$divDetail_ID][$div_ID] = array_merge(
+            $form[$divDetail_ID][$div_ID],
+            genTextFieldFormArray(/* size */        40,
+                                  /* length */      128,
+                                  /* */             $markupID,
+                                  /* title */       FORM_FIELD_CUSTOMER_NOTE,
+                                  /* idx */         NO_IDX_VALUE,
+                                  /* description */ NULL,
+                                  /* value */       $ticket->getCustomerNote(),
+                                  /* disabled */    $viewONLY,
+                                  /* required */    FALSE,
+                                  /* divID */       NULL) // div with ID: required for autocomplete connection
+    );
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_end();
+
+  // ........... CONTACT REGION ...........
+  $div_ID = 'contact';
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_beg(t('Contact Settings & Preferences'), '', TRUE /*collapsed*/, FALSE /*hidden*/);
+
+  // ........... CUSTOMER CONTACT NAME ...........
+  $form[$divDetail_ID][$div_ID] = array_merge(
+            $form[$divDetail_ID][$div_ID],
+            genTextFieldFormArray(/* size */        40,
+                                  /* length */      128,
+                                  /* */             $markupID,
+                                  /* title */       FORM_FIELD_CONTACT_NAME,
+                                  /* idx */         NO_IDX_VALUE,
+                                  /* description */ NULL,
+                                  /* value */       $ticket->getContactName(),
+                                  /* disabled */    $viewONLY,
+                                  /* required */    !$viewONLY,
+                                  /* divID */       NULL) // div with ID: required for autocomplete connection
+    );
+
+  // ........... CUSTOMER CONTACT NUMBER ...........
+  $form[$divDetail_ID][$div_ID] = array_merge(
+            $form[$divDetail_ID][$div_ID],
+            genTextFieldFormArray(/* size */        40,
+                                  /* length */      128,
+                                  /* */             $markupID,
+                                  /* title */       FORM_FIELD_CONTACT_NB,
+                                  /* idx */         NO_IDX_VALUE,
+                                  /* description */ NULL,
+                                  /* value */       $ticket->getContactPhoneNumber(),
+                                  /* disabled */    $viewONLY,
+                                  /* required */    !$viewONLY,
+                                  /* divID */       NULL) // div with ID: required for autocomplete connection
+    );
+
+  // ........... NOTIFICATION ...........
+  $form[$divDetail_ID][$div_ID] = array_merge(
+            $form[$divDetail_ID][$div_ID],
+            genTextAreaFormArray( /* nbrows */      TICKETING_TEXT_FIELDS_DFLT_NB_ROWS,
+                                  /* length */      variable_get('ticketing_field_description_max_len', TICKETING_FIELD_DESCRIPTION_MAX_LEN),
+                                  /* */             $markupID,
+                                  /* title */       FORM_FIELD_EMAIL_NOTIFIERS,
+                                  /* desc */        '',
+                                  /* value */       $ticket->getEmailNotificationList(), // @@@ or convert to multi-lines?
+                                  /* disabled */    FALSE,
+                                  /* required */    FALSE)
+    );
+
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_end();
+
+  // ........... DATE & TIME REGION ...........
+  $div_ID = 'datetime';
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_beg(t('History'), '', TRUE /*collapsed*/, FALSE /*hidden*/);
+
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<div id="'.$div_ID.'_DIV">');
+
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<table border="0">');
+
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<tr>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<th width="20%">Date</th>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<th>Note</th>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</tr>');
+
+  $timestamp = $ticket->getCreationDate();
+  if($timestamp) {
+    $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<tr>');
+    $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<td>'.date("M j, Y, g:i a", $timestamp).'</td>');
+    $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<td>Date Opened</td>');
+    $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</tr>');
+  }
+
+  $timestamp = $ticket->getFirstResponseDate();
+  if($timestamp) {
+    $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<tr>');
+    $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<td>'.date("M j, Y, g:i a", $timestamp).'</td>');
+    $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<td>Date First Response</td>');
+    $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</tr>');
+  }
+
+  $timestamp = $ticket->getLastModifiedDate();
+  if($timestamp) {
+    $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<tr>');
+    $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<td>'.date("M j, Y, g:i a", $timestamp).'</td>');
+    $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<td>Date Last Modified</td>');
+    $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</tr>');
+  }
+
+  $timestamp = $ticket->getResolvedDate();
+  if($timestamp) {
+    $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<tr>');
+    $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<td>'.date("M j, Y, g:i a", $timestamp).'</td>');
+    $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('<td>Date Resolved</td>');
+    $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</tr>');
+  }
+
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</table>');
+
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('</div>');
+  $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = BTI_gen_fieldset_end();
+
+
+  // ------------------- buttons, at bottom this time -----------------------
+  if(!$viewONLY) {
+    $div_ID = BTI_cleanFormField(FORM_FIELD_ACTIONS.'_duplicate');
+    // vvvvv BEG existing ticket buttons
+    if($ticket->isOpened()) {
+      $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = array(
+        '#type' => 'submit',
+        '#value' => t('Update Ticket'),
+        '#submit' => array('BTI_existing_ticket_form__submit_status2UNCHANGED'),
+        '#attributes' => array(
+                          'title' => "Saves your changes and leaves the ticket status unchanged", // mouse over help
+                          'onClick' => 'return JSValidateForm();',
+                          ),
+
+      );
+      $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('&nbsp');
+      $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = array(
+        '#type' => 'submit',
+        '#value' => t('Update to Pending Customer'), // was 'Update & Hold'
+        '#submit' => array('BTI_existing_ticket_form__submit_status2PENDINGCUSTOMER'),
+        '#attributes' => array(
+                          'title' => "Saves your changes and updates the ticket status to PENDING CUSTOMER", // mouse over help
+                          'onClick' => 'return JSValidateForm();',
+                          ),
+      );
+      $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('&nbsp');
+      $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = array(
+        '#type' => 'submit',
+        '#value' => t('Update & Close'),
+        '#submit' => array('BTI_existing_ticket_form__submit_status2CLOSED'),
+        '#attributes' => array(
+                          'title' => "Saves your changes and updates the ticket status to CLOSED", // mouse over help
+                          'onClick' => 'return JSValidateForm();',
+                          ),
+      );
+    }
+    //... see state chart https://home.unite.broadsoft.com/pages/viewpage.action?title=Migration+of+Problem+Reports&spaceKey=IS
+    elseif($ticket->isPendingCustomer()) {
+      $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = array(
+        '#type' => 'submit',
+        '#value' => t('Update Ticket'),
+        '#submit' => array('BTI_existing_ticket_form__submit_status2UNCHANGED'),
+        '#attributes' => array(
+                          'title' => "Saves your changes and leaves the ticket status unchanged", // mouse over help
+                          'onClick' => 'return JSValidateForm();',
+                          ),
+      );
+      $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('&nbsp');
+      $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = array(
+        '#type' => 'submit',
+        '#value' => t('Update & Return to TAC'), // was 'Update & Return'
+        '#submit' => array('BTI_existing_ticket_form__submit_status2OPEN'),
+        '#attributes' => array(
+                          'title' => "Saves your changes and updates the ticket status to OPEN", // mouse over help
+                          'onClick' => 'return JSValidateForm();',
+                          ),
+      );
+      $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('&nbsp');
+      $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = array(
+        '#type' => 'submit',
+        '#value' => t('Update & Close'),
+        '#submit' => array('BTI_existing_ticket_form__submit_status2CLOSED'),
+        '#attributes' => array(
+                          'title' => "Saves your changes and updates the ticket status to CLOSED", // mouse over help
+                          'onClick' => 'return JSValidateForm();',
+                          ),
+      );
+    }
+    //... see state chart https://home.unite.broadsoft.com/pages/viewpage.action?title=Migration+of+Problem+Reports&spaceKey=IS
+    elseif($ticket->isPendingClosure()) {
+      $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = array(
+        '#type' => 'submit',
+        '#value' => t('Update & Return to TAC'), // was 'Update & Return'
+        '#submit' => array('BTI_existing_ticket_form__submit_status2OPEN'),
+        '#attributes' => array(
+                          'title' => "Saves your changes and updates the ticket status to OPEN", // mouse over help
+                          'onClick' => 'return JSValidateForm();',
+                          ),
+      );
+      $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = makeMarkupElement('&nbsp');
+      $form[$divDetail_ID][$div_ID]['markup'.$markupID++] = array(
+        '#type' => 'submit',
+        '#value' => t('Update & Close'),
+        '#submit' => array('BTI_existing_ticket_form__submit_status2CLOSED'),
+        '#attributes' => array(
+                          'title' => "Saves your changes and updates the ticket status to CLOSED", // mouse over help
+                          'onClick' => 'return JSValidateForm();',
+                          ),
+      );
+    }
+    // ^^^^^ END existing ticket buttons
+  }
+
+  $form[$divDetail_ID]['markup'.$markupID++] = BTI_gen_fieldset_end();
+
+  $form['markup'.$markupID++] = makeMarkupElement('</FONT>'); // for the whole form
+
+  return $form;
+}
+
+/** =============================================================================================
+* Most of the field validation has already been done in Javascript
+*/
+function new_ticket_form_validate($form, &$form_state) {
+  // check if platform has been selected in case of BroadTouch Client
+  if($form_state['values'][TICKETING_API_PRODUCT_CATEGORY.'_DD']==CATEGORY_BROADTOUCH_CLIENT_ID && (!isset($form_state['values'][TICKETING_API_PLATFORM.'_DD']) || $form_state['values'][TICKETING_API_PLATFORM.'_DD']==NOT_AN_OPTION_ID)) {
+    form_set_error(FORM_FIELD_PLATFORM, 'You must specify a Platform value');
+  }
+
+  $desc_mal_len = variable_get('ticketing_field_description_max_len', TICKETING_FIELD_DESCRIPTION_MAX_LEN);
+  if (strlen($form_state['values']['Description']) > $desc_mal_len) {
+    form_set_error('Description', t('The Description contains more than '.$desc_mal_len.' characters'));
+  }
+
+  // -- ATTACHMENTS --
+  BTI_validate_attachments($form, $form_state);
+}
+
+/** ============================================================================================= */
+function BTI_validate_attachments($form, &$form_state) {
+  set_time_limit(60*20); // this operation can be quite long!
+  ini_set('memory_limit', '1024M'); // this will change the memory limit for this script-session only
+  // otherwise got: Fatal error: Allowed memory size of 536870912 bytes exhausted (tried to allocate 249263661 bytes) in /usr/local/php/5.2.13/lib/php/HTTP/Request.php on line 995
+
+  $dir = variable_get('ticketing_upload_dir', TICKETING_UPLOAD_DIR);
+  // Validate the file extension and size
+  $maxSizeMb = variable_get('ticketing_upload_max_size_mb', TICKETING_UPLOAD_MAX_SIZE_MB);
+  $maxSizeBytes = 1048576*$maxSizeMb;
+  $allowedExtensions = variable_get('ticketing_upload_allowed_extensions', TICKETING_UPLOAD_ALLOWED_EXTENSIONS);
+  if($allowedExtensions=='ALL') {
+    $validators = array(
+      'file_validate_size' => array($maxSizeBytes), // in bytes
+      'file_validate_extensions' => array(), // need to set it explicity to empty
+    );
+  } else {
+    $validators = array(
+      'file_validate_extensions' => array($allowedExtensions),
+      'file_validate_size' => array($maxSizeBytes), // in bytes
+    );
+  }
+  // handle index gaps: someone could have attached 2 files, at position 1 and 4, just to skrew us or by mistake.
+  $maxNbAttachments = variable_get('ticketing_upload_max_attachment_nb', TICKETING_UPLOAD_MAX_ATTACHMENT_NB);
+  $j=0;
+  for($i=0;$i<$maxNbAttachments;$i++) {
+    $file = file_save_upload(FORM_ATTACHMENT_FIELD_TITLE.$i, $validators);
+    // If a file has been attached AND If that file passed validation
+    if (isset($file->filename)) {
+      $form_state['storage']['file'.$j] = $file;
+      $form_state['storage']['filedesc'.$j] = NULL;
+      $j++;
+    }
+  }
+}
+
+/** ============================================================================================= */
+function existing_ticket_form_validate($form, &$form_state) {
+  $desc_mal_len = variable_get('ticketing_field_description_max_len', TICKETING_FIELD_DESCRIPTION_MAX_LEN);
+  if (strlen($form_state['values']['Description']) > $desc_mal_len) {
+    form_set_error('Description', t('The Description contains more than '.$desc_mal_len.' characters'));
+  }
+
+  // -- ATTACHMENTS --
+  BTI_validate_attachments($form, $form_state);
+}
+
+/** ============================================================================================= */
+function GetUserAccountGroupData($uid, $email, $force_refresh = FALSE) {
+  $ret = NULL;
+  global $REQUEST_LIB;
+  if(!$force_refresh) {
+    $ret = lists_session('bti_agd'.$uid); // Broadsoft TicketingIntegration _ Account Group Data
+    if(!is_null($ret)) {
+      return $ret;
+    }
+  }
+
+  // must ask Xchange
+  $productStr = "";
+  if(variable_get('ticketing_portal_is_cpbx', FALSE)) {
+    $productStr = "&product=cpbx";
+  }
+  // e.g. https://xchangeserver0.broadsoft.com/php/xchange/api?action=get_user_account_group_data&output=browser&format=json&mail=slapierre@broadsoft.com&token=hhqpNHaVeWgvvQHU
+  $url = trim(variable_get('ticketing_xchange_API_server', TICKETING_API_SERVER)).'/api?action=get_user_account_group_data&output=browser&format=json&json=pure&mail='.$email.$productStr;
+  $url .= '&token='.variable_get('ticketing_xchange_API_token', TICKETING_API_TOKEN);
+  $url .= '&fromSiteID='.variable_get('broadsoft_site_ID', 'unknown');
+  $url .= '&fromServer='.array_element("HTTP_HOST", $_SERVER);
+
+  /* forcing cURL - for http1 or http2 versions, see file history in svn */
+  $ch = curl_init ( $url );
+  if(!$ch) {
+    return FALSE;
+  }
+
+  curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true);
+  curl_setopt( $ch, CURLOPT_HTTPHEADER, array('Content-Type: multipart/form-data'));
+  curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+  curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
+
+  $html_response = curl_exec($ch);
+  curl_close($ch);
+  $ret = json_decode($html_response, true); // true = make an array, not an obj
+  // update in local DB
+  if($ret) {
+    lists_session('bti_agd'.$uid, $ret);
+  }
+
+  return $ret;
+}
+
+/** =============================================================================================
+e.g. http://10.1.1.33/php/xchange/api?action=add_ticketing_option&category=customer_group&field=in_country_support&nid=472889&value=test5&output=browser&token=hhqpNHaVeWgvvQHU
+*/
+function AddTargetClient($gid, $value) {
+  $ret = NULL;
+  global $REQUEST_LIB;
+  $productStr = "";
+  if(variable_get('ticketing_portal_is_cpbx', FALSE)) {
+    $productStr = "&product=cpbx";
+  }
+
+  // e.g. https://xchangeserver0.broadsoft.com/php/xchange/api?action=get_user_account_group_data&output=browser&format=json&mail=slapierre@broadsoft.com&token=hhqpNHaVeWgvvQHU
+  $url = trim(variable_get('ticketing_xchange_API_server', TICKETING_API_SERVER)).'/api?';
+  $url .= 'action=add_ticketing_option';
+  $url .= '&output=browser';
+  $url .= '&nid='.$gid;
+  $url .= '&category=customer_group';
+  $url .= '&field=target_client';
+  $url .= '&value='.$value;
+  $url .= '&token='.variable_get('ticketing_xchange_API_token', TICKETING_API_TOKEN);
+  $url .= '&fromSiteID='.variable_get('broadsoft_site_ID', 'unknown');
+  $url .= '&fromServer='.array_element("HTTP_HOST", $_SERVER);
+
+  if($REQUEST_LIB=='HTTP1') {
+    /*
+    $req =& new HTTP_Request($url);
+    $req->setMethod('POST');
+    $req->sendRequest();
+      */
+  } elseif($REQUEST_LIB=='HTTP2') {
+    /*
+    $request = new HTTP_Request2($url, HTTP_Request2::METHOD_POST);
+    $request->setConfig(array(
+        'ssl_verify_peer'   => FALSE,
+        'ssl_verify_host'   => FALSE
+    ));
+    try {
+      $response = $request->send();
+    } catch (HTTP_Request2_Exception $e) { }
+    */
+  } else {
+    /* cURL */
+    $ch = curl_init ( $url );
+    if(!$ch) {
+      return FALSE;
+    }
+
+    curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt( $ch, CURLOPT_HTTPHEADER, array('Content-Type: multipart/form-data'));
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
+
+    $html_response = curl_exec($ch);
+    curl_close($ch);
+  }
+}
+
+/** =============================================================================================
+  returns a "set" implemented as an array of nid:
+    group nid => group title
+*/
+function AssignedCustomerGroups($user, $mode) {
+  if($user) {
+    $user = user_load($user->uid);
+    if($UserAccountGroupData = GetUserAccountGroupData($user->uid, $user->mail)) {
+      if($mode) {
+        if(!($mode=='view' || $mode=='edit')) {
+          $mode = 'both';
+        }
+        if(array_key_exists($mode, $UserAccountGroupData['groups'])) {
+          // plug 'data' sub array no matter the mode
+          if(array_key_exists('data', $UserAccountGroupData['groups'])) {
+            foreach($UserAccountGroupData['groups'][$mode] as $gid => $xyz) {
+              if(array_key_exists($gid, $UserAccountGroupData['groups']['data'])) {
+                $UserAccountGroupData['groups'][$mode][$gid] = $UserAccountGroupData['groups']['data'][$gid];
+              }
+            }
+            // keep the product category which is only in sub-array "both"
+            if(array_key_exists('both', $UserAccountGroupData['groups'])) {
+              foreach($UserAccountGroupData['groups'][$mode] as $gid => $xyz) {
+                if(array_key_exists($gid, $UserAccountGroupData['groups']['both'])) {
+                  $UserAccountGroupData['groups'][$mode][$gid][ARRAY_FIELD_PRODUCT_CATEGORY] = $UserAccountGroupData['groups']['both'][$gid][ARRAY_FIELD_PRODUCT_CATEGORY];
+                }
+              }
+            }
+          }
+          return $UserAccountGroupData['groups'][$mode];
+        }
+      }
+    }
+  }
+
+  return NULL;
+}
+
+/** ============================================================================================= */
+function get_group_data_from_nid($user, $nid) {
+  if($UserAccountGroupData = GetUserAccountGroupData($user->uid, $user->mail)) {
+    return $UserAccountGroupData['groups']['both'][$nid];
+  }
+
+  return NULL;
+}
+
+/** ============================================================================================= */
+function get_account_data_from_nid($user, $nid) {
+  if($UserAccountGroupData = GetUserAccountGroupData($user->uid, $user->mail)) {
+    return $UserAccountGroupData['accounts'][$nid];
+  }
+
+  return NULL;
+}
+
+/** ============================================================================================= */
+function BTI_new_ticket_form__submit_open_ticket($form, &$form_state) {
+  // fill user profile data if required
+  $profileUpdated = FALSE;
+  global $user;
+  $account = user_load($user->uid);
+  $full_name = property_exists($account, 'field_full_name')?$account->field_full_name['und'][0]['value']:'';
+  $LDAPIntegration = NULL;
+
+  // if full name change: save local + LDAP
+  if( $full_name != $form_state['input'][BTI_cleanFormField(FORM_FIELD_CONTACT_NAME)]) {
+      $full_name = $form_state['input'][BTI_cleanFormField(FORM_FIELD_CONTACT_NAME)];
+    user_save($account);
+    // drupal_set_message('Customer Contact Name updated to: '.$full_name, 'notice');
+    if(!$LDAPIntegration) {
+      $LDAPIntegration = new LDAPIntegration();
+    }
+    $LDAPIntegration->setFieldFromEmail($account->mail, 'sn', $full_name);
+    $profileUpdated = TRUE;
+  }
+
+  // if phone nb change: save local + LDAP
+  if(property_exists($account, 'field_telephone_number') && $account->field_telephone_number[LANGUAGE_NONE][0]['value'] != $form_state['input'][BTI_cleanFormField(FORM_FIELD_CONTACT_NB)]) {
+    $updatedFields = array();
+    $updatedFields['field_telephone_number'][LANGUAGE_NONE][0]['value'] = $form_state['input'][BTI_cleanFormField(FORM_FIELD_CONTACT_NB)];
+    user_save($account, $updatedFields);
+    // drupal_set_message('Customer Contact Number updated to: '.$updatedFields['field_telephone_number'][LANGUAGE_NONE][0]['value'], 'notice');
+    if(!$LDAPIntegration) {
+      $LDAPIntegration = new LDAPIntegration();
+    }
+    $LDAPIntegration->setFieldFromEmail($account->mail, 'telephonenumber', $updatedFields['field_telephone_number'][LANGUAGE_NONE][0]['value']);
+    $profileUpdated = TRUE;
+  }
+  if($profileUpdated) {
+    drupal_set_message('User Profile Settings have been updated with the Contact Details you provided', 'notice');
+  }
+
+  $ticketingService = getTicketingService();
+
+  $platformVal = $form_state['input'][TICKETING_API_PLATFORM.'_DD'];
+  if($platformVal==NOT_AN_OPTION_ID) {
+    $platformVal = NULL;
+  }
+
+  $problemCategoryVal = NULL;
+  if(array_key_exists(TICKETING_API_PROBLEM_CATEGORY.'_DD', $form_state['input'])) {
+    $problemCategoryVal = $form_state['input'][TICKETING_API_PROBLEM_CATEGORY.'_DD'];
+    if(is_array($problemCategoryVal)) {
+      if($problemCategoryVal[0]==NOT_AN_OPTION_ID) {
+        $problemCategoryVal = NULL;
+      }
+    } else {
+      if($problemCategoryVal==NOT_AN_OPTION_ID) {
+        $problemCategoryVal = NULL;
+      }
+    }
+  }
+
+  $systemTypeVal = $form_state['input'][TICKETING_API_SYSTEM_TYPE.'_DD'];
+  if($systemTypeVal==NOT_AN_OPTION_ID) {
+    $systemTypeVal = NULL;
+  }
+
+  // determine context of ticket creation: indirect customer, etc
+  if(array_key_exists('__cg__', $form_state['values']) && strlen($form_state['values']['__cg__'])) {
+    $ChosenCustomerGroupNID = $form_state['values']['__cg__'];
+  } else {
+    $ChosenCustomerGroupNID = $form_state['input'][TICKETING_API_DIRECT_CUSTOMER.'_DD'];
+  }
+  $ChosenCustomerGroupNode = get_group_data_from_nid($user, $ChosenCustomerGroupNID);
+
+  // search for partner account (if any)
+  $partner_company = NULL;
+  $partner_company_CustomerAccountNid = PartnerCustomerAccountFromCustGroup($user, $ChosenCustomerGroupNID);
+  if($partner_company_CustomerAccountNid) {
+    $partner_company_CustomerAccount = get_account_data_from_nid($user, $partner_company_CustomerAccountNid);
+    $partner_company = $partner_company_CustomerAccount['jira_partner'];
+  }
+
+  // add this target client - will not be duplicated anyway on the server
+  if(array_key_exists(BTI_cleanFormField(FORM_FIELD_TARGET_CLIENT), $form_state['input']) && strlen($form_state['input'][BTI_cleanFormField(FORM_FIELD_TARGET_CLIENT)])) {
+    AddTargetClient($ChosenCustomerGroupNID, urlencode($form_state['input'][BTI_cleanFormField(FORM_FIELD_TARGET_CLIENT)]));
+    // update local image of group data
+    GetUserAccountGroupData($account->uid, $account->mail, TRUE);
+  }
+  $originator=$ChosenCustomerGroupNode['jira_originator']; // group name
+  $customer_company=$ChosenCustomerGroupNode['jira_customer']; // account name
+
+  $AssignedCustomerGroups = AssignedCustomerGroups($user, EDIT_GROUP_ACCESS);
+  $icList = buildInCountryArray($AssignedCustomerGroups[$ChosenCustomerGroupNID]);
+  $ticketID = $ticketingService->create_ticket(
+    $originator,
+    $customer_company,
+    $partner_company,
+    $form_state['input'][BTI_cleanFormField(FORM_FIELD_TITLE)],
+    $form_state['input'][BTI_cleanFormField(TICKETING_API_SEVERITY).'_DD'],
+    $form_state['input'][BTI_cleanFormField(FORM_FIELD_DESCRIPTION)],
+    $form_state['input'][TICKETING_API_PRODUCT_CATEGORY.'_DD'],
+    $form_state['input'][TICKETING_API_COMPONENT.'_DD'],
+    $form_state['input'][TICKETING_API_RELEASE.'_DD'],
+    $platformVal,
+    $problemCategoryVal,
+    $systemTypeVal,
+    $form_state['input'][BTI_cleanFormField(FORM_FIELD_CONTACT_NAME)],
+    $user->mail,
+    $form_state['input'][BTI_cleanFormField(FORM_FIELD_CONTACT_NB)],
+    $form_state['input'][BTI_cleanFormField(FORM_FIELD_CUSTOMER_NOTE)],
+    BTI_text2csvList($form_state['input'][BTI_cleanFormField(FORM_FIELD_EMAIL_NOTIFIERS)]),
+    !empty($form_state['input'][TICKETING_API_IN_COUNTRY_SUPPORT.'_DD'])?$icList[$form_state['input'][TICKETING_API_IN_COUNTRY_SUPPORT.'_DD']]:null,
+    $form_state['input']['EndCustomerName']
+  );
+
+  if($ticketID) {
+    BTI_log_ticket_creation($ticketID);
+
+    // if there were files attached, send them one by one to the ticketing system
+    $maxNbAttachments = variable_get('ticketing_upload_max_attachment_nb', TICKETING_UPLOAD_MAX_ATTACHMENT_NB);
+    for($i=0;$i<$maxNbAttachments;$i++) {
+      if(isset($form_state['storage']['file'.$i])) {
+        $file = $form_state['storage']['file'.$i];
+        // We are done with the file, remove it from storage.
+        unset($form_state['storage']['file'.$i]);
+        // DO NOT Make the storage of the file permanent
+        // file_set_status($file, FILE_STATUS_PERMANENT);
+        if(!$ticketingService->attach_file($ticketID, $file->uri, $form_state['storage']['filedesc'.$i])) {
+          drupal_set_message('File Attachment Error occured for file '.$file->filepath, 'error');
+        }
+        unset($form_state['storage']['filedesc'.$i]);
+      }
+    }
+    $form_state['redirect'] = BASEURL_ONE_TICKET.'/'.$ticketID;
+  } else {
+    drupal_set_message('There was an error with ticket creation, please contact support', 'warning');
+  }
+}
+
+/** ============================================================================================= */
+function BTI_existing_ticket_form__submit_status2OPEN($form, &$form_state) {
+  global $user;
+  $updateArr = array();
+  $updateArr['STATUS'] = 'OPEN';
+  $fieldID = BTI_cleanFormField(FORM_FIELD_HISTORY_LOG_CUR_UPDATE);
+  if(strlen($form_state['values'][$fieldID])) {
+    $updateArr[Ticket::getIssueUpdateTag()] = $form_state['input'][$fieldID];
+  }
+  BTI_existing_ticket_update($form, $form_state, $updateArr);
+}
+
+/** ============================================================================================= */
+function BTI_existing_ticket_form__submit_status2PENDINGCUSTOMER($form, &$form_state) {
+  global $user;
+  $updateArr = array();
+  $updateArr['STATUS'] = 'MONITOR';
+  $fieldID = BTI_cleanFormField(FORM_FIELD_HISTORY_LOG_CUR_UPDATE);
+  if(strlen($form_state['values'][$fieldID])) {
+    $updateArr[Ticket::getIssueUpdateTag()] = $form_state['input'][$fieldID];
+  }
+  BTI_existing_ticket_update($form, $form_state, $updateArr);
+}
+
+/** ============================================================================================= */
+function BTI_existing_ticket_form__submit_status2CLOSED($form, &$form_state) {
+  global $user;
+  $updateArr = array();
+  $updateArr['STATUS'] = 'CLOSED';
+  $fieldID = BTI_cleanFormField(FORM_FIELD_HISTORY_LOG_CUR_UPDATE);
+  if(strlen($form_state['input'][$fieldID])) {
+    $updateArr[Ticket::getIssueUpdateTag()] = $form_state['input'][$fieldID];
+  }
+  BTI_existing_ticket_update($form, $form_state, $updateArr);
+
+  $PRKey = $form_state['input']['ticketID'];
+  // log an explicit ticket closure
+  BTI_log_ticket_closure($PRKey);
+
+  $surveyManager = customerSurveyManager::instantiate(); // will get the right D6 or D7 version
+  $surveyManager->surveyUserIfDue($PRKey, $form_state['input'][BTI_cleanFormField(TICKETING_API_SEVERITY).'_DD'], $form_state);
+}
+
+/** ============================================================================================= */
+function BTI_existing_ticket_form__submit_status2UNCHANGED($form, &$form_state) {
+  global $user;
+  $updateArr = array();
+  $fieldID = BTI_cleanFormField(FORM_FIELD_HISTORY_LOG_CUR_UPDATE);
+  if(strlen($form_state['input'][$fieldID])) {
+    $updateArr[Ticket::getIssueUpdateTag()] = $form_state['input'][$fieldID];
+  }
+  BTI_existing_ticket_update($form, $form_state, $updateArr);
+}
+
+/** =============================================================================================
+  $updateArr must have the form:
+    field_ID => value
+*/
+function BTI_existing_ticket_update($form, &$form_state, $updateArr) {
+  global $user;
+  $ticketingService = getTicketingService();
+
+  $ticketID = $form_state['input']['ticketID'];
+
+  $fieldID = BTI_cleanFormField(FORM_FIELD_HISTORY_LOG_CUR_UPDATE);
+  if(strlen($form_state['input'][$fieldID])) {
+    if(variable_get('ticketing_embed_xchange_uid_into_updates', TRUE)) {
+      $embededXUID = '[xuid:'.$user->uid.';email:'.$user->mail.']';
+      $updateArr[Ticket::getIssueUpdateTag()] = $embededXUID."\n".$form_state['input'][$fieldID];
+    } else {
+      $updateArr[Ticket::getIssueUpdateTag()] = $form_state['input'][$fieldID];
+    }
+  }
+
+  $divDetail_ID = 'TICKET_DETAILS';
+
+  // detect deltas for all fields
+  $fieldID = BTI_cleanFormField(FORM_FIELD_TITLE);
+  if($form[$divDetail_ID][$fieldID]["#value"] != $form_state['input'][$fieldID]) {
+    $updateArr[Ticket::getTitleTag()] = $form_state['input'][$fieldID];
+  }
+
+  $fieldID = BTI_cleanFormField(TICKETING_API_SEVERITY);
+  if($form[$divDetail_ID][$fieldID.'_DD']["#value"] != $form_state['input'][$fieldID.'_DD']) {
+    $updateArr[Ticket::getSeverityTag()] = $form_state['input'][$fieldID.'_DD'];
+  }
+
+  $fieldID = BTI_cleanFormField(FORM_FIELD_DESCRIPTION);
+  if($form[$divDetail_ID][$fieldID]["#value"] != $form_state['input'][$fieldID]) {
+    $updateArr[Ticket::getDescriptionTag()] = $form_state['input'][$fieldID];
+  }
+
+  $fieldID = BTI_cleanFormField(TICKETING_API_PRODUCT_CATEGORY);
+  $updateArr[Ticket::getProductCategoryTag()] = $form_state['input'][$fieldID.'_DD'];
+
+  $fieldID = BTI_cleanFormField(TICKETING_API_COMPONENT);
+  if($form_state['input'][$fieldID.'_DD']!=NOT_AN_OPTION_ID) {
+    $updateArr[Ticket::getComponentTag()] = $form_state['input'][$fieldID.'_DD'];
+  }
+
+  $fieldID = BTI_cleanFormField(TICKETING_API_RELEASE);
+  if($form_state['input'][$fieldID.'_DD']!=NOT_AN_OPTION_ID) {
+    $updateArr[Ticket::getRelFoundTag()] = $form_state['input'][$fieldID.'_DD'];
+  }
+
+  $fieldID = BTI_cleanFormField(TICKETING_API_PLATFORM);
+  if($form_state['input'][$fieldID.'_DD']!=NOT_AN_OPTION_ID){
+    $tempFieldID = BTI_cleanFormField(TICKETING_API_RELEASE);
+    $updateArr[Ticket::getRelFoundTag()] = $form_state['input'][$tempFieldID.'_DD'];
+    $updateArr[Ticket::getPlatformTag()] = $form_state['input'][$fieldID.'_DD'];
+  }
+
+  $fieldID = BTI_cleanFormField(TICKETING_API_PROBLEM_CATEGORY);
+  if(array_key_exists($fieldID.'_DD', $form_state['input'])) {
+    $updateArr[Ticket::getProblemCategoryTag()] = $form_state['input'][$fieldID.'_DD'];
+  }
+
+  $fieldID = BTI_cleanFormField(TICKETING_API_SYSTEM_TYPE);
+  if($form[$divDetail_ID][BTI_cleanFormField(FORM_FIELD_PRODUCT_FIELDSET)][$fieldID.'_DD']["#value"] != $form_state['input'][$fieldID.'_DD']) {
+    if($form_state['input'][$fieldID.'_DD']!=NOT_AN_OPTION_ID) {
+      $updateArr[Ticket::getSystemTypeTag()] = $form_state['input'][$fieldID.'_DD'];
+    }
+  }
+
+  $fieldsetID = BTI_cleanFormField('notes'); // for the whole fieldset
+  $div_ID = BTI_cleanFormField(FORM_FIELD_CUSTOMER_NOTE);
+  if($form[$divDetail_ID][$fieldsetID][$div_ID]["#value"] != $form_state['input'][$div_ID]) {
+    $updateArr[Ticket::getCustomerNoteTag()] = $form_state['input'][$div_ID];
+  } else {
+    // might have been blanked - ok for this field
+    if(strlen($form[$divDetail_ID][$fieldsetID][$div_ID]["#value"]) && (!isset($form_state['input'][$div_ID]) || strlen($form_state['input'][$div_ID])==0)) {
+      $updateArr[Ticket::getCustomerNoteTag()] = '';
+    }
+  }
+
+  $fieldID = BTI_cleanFormField(TICKETING_API_IN_COUNTRY_SUPPORT);
+  if( array_key_exists($fieldID.'_DD', $form[$divDetail_ID][$fieldsetID])
+    &&
+      array_key_exists($fieldID.'_DD', $form_state['input'])
+    ) {
+    $previousValue_int = $form[$divDetail_ID][$fieldsetID][$fieldID.'_DD']["#value"];
+    $selectedValue_int = intval($form_state['input'][$fieldID.'_DD']);
+    if($previousValue_int != $selectedValue_int) {
+      $selectedValue_string = $form[$divDetail_ID][$fieldsetID][$fieldID.'_DD']["#options"][$selectedValue_int];
+      $updateArr[Ticket::getInCountryTag()] = urlencode($selectedValue_string);
+    }
+  }
+
+  $fieldID = BTI_cleanFormField(FORM_FIELD_EMAIL_NOTIFIERS);
+  if(array_key_exists($fieldID, $form_state['input'])) {
+    $updateArr[Ticket::getEmailNotificationListTag()] = $form_state['input'][$fieldID];
+  }
+
+  $fieldsetID = BTI_cleanFormField('contact'); // for the whole fieldset
+  $div_ID = BTI_cleanFormField(FORM_FIELD_CONTACT_NAME);
+  if($form[$divDetail_ID][$fieldsetID][$div_ID]["#value"] != $form_state['input'][$div_ID]) {
+    $updateArr[Ticket::getContactNameTag()] = $form_state['input'][$div_ID];
+  }
+
+  $div_ID = BTI_cleanFormField(FORM_FIELD_CONTACT_NB);
+  if($form[$divDetail_ID][$fieldsetID][$div_ID]["#value"] != $form_state['input'][$div_ID]) {
+    $updateArr[Ticket::getContactPhoneNumberTag()] = $form_state['input'][$div_ID];
+  }
+
+  // if there were files attached, send them one by one to the ticketing system
+  $maxNbAttachments = variable_get('ticketing_upload_max_attachment_nb', TICKETING_UPLOAD_MAX_ATTACHMENT_NB);
+  $fileUpdate = FALSE;
+  for($i=0;$i<$maxNbAttachments;$i++) {
+    if(isset($form_state['storage']['file'.$i])) {
+      $fileUpdate = TRUE;
+      $file = $form_state['storage']['file'.$i];
+      // We are done with the file, remove it from storage.
+      unset($form_state['storage']['file'.$i]);
+      // DO NOT Make the storage of the file permanent
+      // file_set_status($file, FILE_STATUS_PERMANENT);
+      if(!$ticketingService->attach_file($ticketID, $file->uri, $form_state['storage']['filedesc'.$i])) {
+        drupal_set_message('File Attachment Error occured for file '.$file->uri, 'error');
+      }
+      unset($form_state['storage']['filedesc'.$i]);
+    }
+  }
+  if(count($updateArr)>0) {
+    $updateArr[Ticket::getTransitionsTag()] = urlencode($form_state['values'][Ticket::getTransitionsTag()]);
+    $ticketID = $ticketingService->update_ticket($ticketID, $updateArr,$updateArr);
+
+    BTI_log_ticket_update($ticketID);
+    if(!$ticketID) {
+      drupal_set_message('There was an error with ticket update, please contact support', 'warning');
+    }
+  } elseif(!$fileUpdate) {
+    drupal_set_message('No ticket update required', 'notice');
+  }
+  $form_state['redirect'] = BASEURL_ONE_TICKET.'/'.$ticketID;
+}
+
+/** ============================================================================================= */
+function BTI_existing_ticket_form__submit_cancel($form, &$form_state) {
+  unset($form_state['storage']); // needs to be unset otherwise redirect is not done...
+  $form_state['redirect'] = BASEURL_ONE_TICKET.'/'.$form_state['values']['ticketID'];
+}
+
+
+/** =============================================================================================
+*/
+function broadsoft_ticketing_integration_form_alter(&$form, &$form_state, $form_id) {
+  global $user;
+  if( ($form_id=='customer_node_form') || ($form_id=='customer_group_node_form') ){
+    // hide some fields even in the creation form
+    $form['menu']['#access'] = FALSE;
+    $form['book']['#access'] = FALSE;
+    $form['comment_settings']['#access'] = FALSE;
+    $form['path']['#access'] = FALSE;
+    $form['revision_information']['#access'] = FALSE;
+    $form['author']['#access'] = FALSE;
+    $form['print']['#access'] = FALSE;
+    $form['options']['#access'] = FALSE;
+    $form['field_customer']['#access'] = FALSE;
+    $form['field_ticketing_account_id']['#access'] = FALSE;
+    unset($form['buttons']['preview']);
+  }
+}
+
+/** =============================================================================================
+
+function BTI_GetAllowedOptions($category, $parent_oid=NULL) {
+  $isCPBX = variable_get('ticketing_portal_is_cpbx', FALSE);
+  $retArr = array();
+
+  $sortOrder = 'ASC';
+  if($category==TICKETING_API_RELEASE) {
+    $sortOrder = 'DESC';
+  }
+
+  if(!$parent_oid) {
+    // if $parent_oid is not specified, return ALL possible options
+    $dbquery = db_select('ticketing_options', 'ticketing_options')
+                ->fields('ticketing_options', array('oid', 'name'))
+                ->orderBy('ticketing_options.name', $sortOrder)
+                ->condition('ticketing_options.category', $category, '=');
+    $dbresult = $dbquery->execute();
+
+    if($dbresult)  {
+      foreach ($dbresult as $row) {
+        // filter cpbx stuff
+        $retArr[$row->oid] = $row->name;
+      }
+    }
+  } else {
+    $dbquery = db_select('ticketing_options', 'ticketing_options');
+    $dbquery->join('ticketing_options_dependencies', 'ticketing_options_dependencies', 'ticketing_options_dependencies.allowed_oid=ticketing_options.oid');
+    $dbresult = $dbquery->fields('ticketing_options', array('name'))
+                        ->fields('ticketing_options_dependencies', array('allowed_oid'))
+                        ->orderBy('ticketing_options.name', $sortOrder)
+                        ->condition('ticketing_options_dependencies.dependant_category', $category, '=')
+                        ->condition('ticketing_options_dependencies.oid', $parent_oid, '=')
+                        ->execute();
+    if($dbresult)  {
+      foreach ($dbresult as $row) {
+        $retArr[$row->allowed_oid] = $row->name;
+      }
+    }
+  }
+
+  return $retArr;
+}
+*/
+
+/** =============================================================================================
+*/
+function BTI_MakeFormOptionArray($optionArr, $putAtBegArr=NULL) {
+  $retArray = array();
+  if($putAtBegArr) {
+      foreach($putAtBegArr as $key => $val) {
+        $retArray[$key] = t($val);
+    }
+  }
+  foreach($optionArr as $key => $val) {
+    if(!array_key_exists($key, $retArray)) {
+      $retArray[$key] = t($val);
+    }
+  }
+  return $retArray;
+}
+
+/** =============================================================================================
+  Fetches options and dependencies from Xchange API
+  Gets an array-version of a DB table dump; just have to load it into memory here
+  Returns:
+    TRUE if seems to have processed something,
+    FALSE otherwise
+*/
+function BTI_ResyncOptions() {
+  global $REQUEST_LIB;
+  set_time_limit(60*5); // this operation can be quite long!
+  $resArr = array();
+  $url = trim(variable_get('ticketing_xchange_API_server', TICKETING_API_SERVER)).'/api?action=get_ticketing_options&output=browser&format=json&token='.variable_get('ticketing_xchange_API_token', TICKETING_API_TOKEN);
+  $url .= '&fromSiteID='.variable_get('broadsoft_site_ID', 'unknown');
+  $url .= '&fromServer='.array_element("HTTP_HOST", $_SERVER);
+
+  if($REQUEST_LIB=='HTTP1') {
+    /*
+    $request = new HTTP_Request($url);
+    $request->setMethod('POST');
+    if (!PEAR::isError($request->sendRequest()))
+      $resArr = json_decode($request->getResponseBody());
+      */
+  } elseif($REQUEST_LIB=='HTTP2') {
+    /*
+    $request = new HTTP_Request2($url, HTTP_Request2::METHOD_POST);
+    $request->setConfig(array(
+        'ssl_verify_peer'   => FALSE,
+        'ssl_verify_host'   => FALSE
+    ));
+    try {
+      $response = $request->send();
+      if (200 == $response->getStatus()) {
+        $resArr = json_decode($response->getBody(), true);  // true = make an array, not an obj
+      }
+    } catch (HTTP_Request2_Exception $e) { }
+    */
+  } else {
+    /* cURL */
+    $ch = curl_init ( $url );
+    if(!$ch) {
+      return FALSE;
+    }
+
+    curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt( $ch, CURLOPT_HTTPHEADER, array('Content-Type: multipart/form-data'));
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, false);
+    curl_setopt( $ch, CURLOPT_RETURNTRANSFER, true );
+
+    $html_response = curl_exec($ch);
+    curl_close($ch);
+    $resArr = json_decode($html_response, true); // true = make an array, not an obj
+  }
+  $JIRA = getTicketingService();
+  $JIRA->getCachedProjectMeta("TAC",true);
+
+  if(count($resArr)) {
+    // flush everything that was in the tables
+    $num_deleted = db_delete('ticketing_options')->execute();
+    $num_deleted = db_delete('ticketing_options_dependencies')->execute();
+
+    foreach($resArr as $id => $element) {
+      db_insert($element['table'])
+        ->fields($element['fields']) // exact match of all fields
+        ->execute();
+    }
+  }
+
+  return (count($resArr)>0);
+}
+
+/** =============================================================================================
+  Outputs form to confirm ticketing options resync
+*/
+function resync_ticketing_options_form() {
+  $form = array();
+
+  $markupID = 0; // using auto-numbering for markup elements
+  $button_name = 'Resync Options';
+  $form['markup'.$markupID++] = makeMarkupElement('By pressing the <b>'.$button_name.'</b> button below, you will trig a re-synchronisation of the ticketing options and option inter-dependencies from the ticketing system. This will impact users who might be trying to open a ticket at this very moment.<br><br>Note that this operation can take about 1 min.<br><br>');
+
+  $form['resync_options'] = array(
+    '#type' => 'submit',
+    '#value' => t($button_name),
+  );
+
+  return $form;
+}
+
+/** =============================================================================================
+*/
+function resync_ticketing_options_form_submit($form, &$form_state) {
+  if(BTI_ResyncOptions()) {
+    drupal_set_message('Ticketing options have been re-synchronized with the ticketing system', 'notice');
+  } else {
+    drupal_set_message('Seems something went wrong while re-synchronizing the ticketing options', 'error');
+  }
+}
+
+/** =============================================================================================
+// https://xchange.broadsoft.com/php/xchange/api?action=get_ticketing_users&output=browser&format=csv
+ * Used through API calls
+ * only supported format: csv
+ * usage: asked by Andre for sending alerts...
+ */
+function get_ticketing_users($params) {
+  $resStr = 'Access Denied';
+
+  if(user_access(MANAGE_TICKETING__TICKETING_PERMISSION)) {
+    if($params['format']!='csv') {
+      return 'unsupported format';
+    }
+
+    // build tmp table to avoid trouble
+    $resStr = '';
+
+    $product_sub_query_str0="";
+    $product_sub_query_str1="";
+    if(array_key_exists('site', $params)) {
+      if($params['site']=='xchange') {
+        $product_sub_query_str1=" AND cg.nid=tgm.gid AND cg.field_product_category_value=0";
+        $product_sub_query_str0=" , content_type_customer_group cg ";
+      } elseif($params['site']=='cpbx') {
+        $product_sub_query_str1=" AND cg.nid=tgm.gid AND cg.field_product_category_value=1";
+        $product_sub_query_str0=" , content_type_customer_group cg ";
+      } else {
+        return "unknown site argument: expecting [xchange, cpbx]";
+      }
+    }
+
+    $queryStr = "SELECT distinct u.mail FROM users u, ticketing_group_membership tgm ".$product_sub_query_str0." WHERE tgm.uid=u.uid ".$product_sub_query_str1." ORDER BY mail ASC";
+    $result = db_query($queryStr);
+    $cnt=0;
+    while($row = $result->fetchAssoc()) {
+      if(strlen($resStr)) {
+        $resStr .= ',';
+      }
+
+      $resStr .= $row['mail'];
+      $cnt++;
+    }
+    //  $resStr .= '::'.$cnt; // for debug purposes
+  }
+
+  return $resStr;
+}
+
+/** =============================================================================================
+ * Used through API calls
+ * only supported format: json or xml
+ * http://10.1.1.33/php/xchange2/api?action=get_ticketing_options&output=browser&format=json&token=hhqpNHaVeWgvvQHU
+ */
+function get_ticketing_options($params) {
+  switch($params['format']) {
+    case 'json':
+    case 'xml':
+      break;
+    default:
+      return 'unsupported format';
+  }
+
+  $resArr = array();
+  $i=0;
+
+  $queryStr = "select * from ticketing_options";
+  $result = db_query($queryStr)->execute();
+  while($row = $result->fetchAssoc()) {
+    $resArr[$i]['table'] = 'ticketing_options';
+    $resArr[$i]['fields']['oid'] = $row['oid'];
+    $resArr[$i]['fields']['name'] = jsonify($row['name']);
+    $resArr[$i]['fields']['tid'] = $row['tid'];
+    $resArr[$i]['fields']['category'] = jsonify($row['category']);
+    $i++;
+  }
+
+  $queryStr = "select * from ticketing_options_dependencies";
+  $result = db_query($queryStr)->execute();
+  while($row = $result->fetchAssoc()) {
+    $resArr[$i]['table'] = 'ticketing_options_dependencies';
+    $resArr[$i]['fields']['oid'] = $row['oid'];
+    $resArr[$i]['fields']['dependant_category'] = jsonify($row['dependant_category']);
+    $resArr[$i]['fields']['allowed_oid'] = $row['allowed_oid'];
+    $i++;
+  }
+
+  if($params['json']=='pure') {
+    $version = VERSION;
+    if( $version[0] == '6' ) {
+      // We are returning JSON, so tell the browser.
+      drupal_set_header('Content-Type: application/json');
+    } else {
+      drupal_add_http_header('Content-Type', 'application/json');
+    }
+    return json_encode($resArr);
+  } elseif($params['format']=='json') {
+    return drupal_json($resArr);
+  } else
+    return api_array2xml($resArr);
+}
+
+
+/** =============================================================================================
+Remove the closing </p> tags as we don't need them and then explode the string into an array on opening </p> tags.
+ */
+function textArea2Arr($text) {
+  $retArray = array();
+  $text = str_replace('</p>', '', $text);
+  $array = explode('<p>', $text);
+  foreach($array as $el) {
+    $el = trim($el);
+    if($el && strlen($el)) {
+      $retArray[] = $el;
+    }
+  }
+  if(count($retArray)) {
+    return $retArray;
+  }
+  return NULL;
+}
+
+/** =============================================================================================
+http://10.1.1.33/php/xchange/api?action=add_ticketing_option&category=customer_group&field=in_country_support&nid=472889&value=test5&output=browser&token=hhqpNHaVeWgvvQHU
+ * Used through API calls
+ */
+function add_ticketing_option($params) {
+  $retStr = 'error in '.__FUNCTION__;
+  $table_name = NULL;
+  $field_name = NULL;
+
+  if($params['category'] == 'customer_group') {
+    $table_name = 'content_type_'.$params['category'];
+
+    if($params['field'] == 'in_country_support') {
+      $field_name = 'field_'.$params['field'].'_options_value';
+    }
+    if($params['field'] == 'target_client') {
+      $field_name = 'field_'.$params['field'].'_options_value';
+    }
+  }
+
+  if($table_name && $field_name && $params['nid']) {
+    $result = db_query("SELECT ".$field_name." FROM ".$table_name." WHERE nid=".$params['nid']);
+    if($CustGroupRow = db_fetch_array($result)) {
+      // only add if not already present
+      $params['value'] = str_replace('/', '\/', preg_quote($params['value']));
+      if(!preg_match('/\<p\>'.$params['value'].'\<\/p\>/', $CustGroupRow[$field_name])) {
+        $newVal = $CustGroupRow[$field_name].'<p>'.$params['value'].'</p>';
+        db_query("UPDATE ".$table_name." SET ".$field_name."='".$newVal."' WHERE nid=".$params['nid']);
+        bs_touchNode($params['nid']);
+      }
+      $retStr = 'success';
+    }
+  }
+  return $retStr;
+}
+
+/** =============================================================================================
+ * Used through API calls from CPBX (as of 25 march 2015)
+This is the way for cpbx to get a user's ticketing data from the centralized Xchange DB
+https://xchangeserver0.broadsoft.com/php/xchange/api?action=get_user_account_group_data&output=browser&format=json&mail=slapierre@broadsoft.com&token=hhqpNHaVeWgvvQHU
+https://xchangeserver0.broadsoft.com/php/xchange/api?action=get_user_account_group_data&output=browser&format=json&mail=slapierre@broadsoft.com&product=cpbx&token=hhqpNHaVeWgvvQHU
+http://10.1.1.33/php/xchange/api?action=get_user_account_group_data&output=browser&format=json&mail=slapierre@broadsoft.com&product=cpbx&token=hhqpNHaVeWgvvQHU
+ * Used through API calls
+ * only supported format: json
+ */
+function get_user_account_group_data($params) {
+  $resArr = array();
+
+  switch($params['format']) {
+    case 'json':
+      break;
+    default:
+      return 'unsupported format';
+  }
+  $uid = 0;
+  if(strlen($params['uid'])) {
+    $uid = $params['uid'];
+  } elseif(strlen($params['mail'])) {
+    $uid = GetUIDFromEmail($params['mail']);
+  }
+
+  $productQueryPart = "";
+  if(array_key_exists('product', $params) && $params['product']=='cpbx') {
+    $productQueryPart = " AND cg.field_product_category_value in (".CPBX_GROUP_DB_VAL.", ".CLOUD_SERVICES_GROUP_DB_VAL.") ";
+  }
+
+  if($uid==0) {
+    return 'unknown user reference';
+  }
+
+  // gather info about possible CPBX products using reverse string association from field values
+  // done in 2 lookups
+  $productCategories_drupalID2JiraID = array();
+  //$result = db_query("select * from  ticketing_options where category='PRODUCT_MAIN'");
+  $result = db_select('ticketing_options', 't')
+    ->fields('t', array('name', 'oid'))
+    ->condition('category', 'PRODUCT_MAIN', '=')
+    ->execute();
+  while($dbRow = $result->fetchAssoc()) {
+    switch(trim($dbRow['name'])) {
+      case PRODUCT_BROADCLOUD:
+        $productCategories_drupalID2JiraID[CPBX_GROUP_DB_VAL] = $dbRow['oid'];
+        break;
+      case PRODUCT_CLOUD_SERVICES:
+        $productCategories_drupalID2JiraID[CLOUD_SERVICES_GROUP_DB_VAL] = $dbRow['oid'];
+        break;
+    }
+  }
+
+  // $allGroupNids = tmp array for second result below
+  $allGroupNids = array();
+
+  // --- first result array: groups, pre-formatted because needed as-is
+  // ... doing 3 sub-queries
+  $modeQueryPart = "";
+  $access = 'both';
+  //$result = db_query("SELECT tgm.gid, n.title, cg.field_customer_account_nid, cg.field_product_category_value, cg.field_in_country_support_options_value, cg.field_target_client_options_value FROM {ticketing_group_membership} tgm, {node} n, {content_type_customer_group} cg WHERE cg.nid=n.nid AND tgm.uid='".$uid."' AND tgm.gid=n.nid ".$modeQueryPart.$productQueryPart);
+  $result = db_query("SELECT tgm.gid, n.title, fca.field_customer_account_target_id, fpc.field_product_category_value, ficsp.field_in_country_support_options_value, ftcp.field_target_client_options_value FROM {ticketing_group_membership} tgm, {node} n, {field_data_field_product_category} fpc, {field_data_field_customer_account} fca, {field_data_field_in_country_support_options} ficsp, {field_data_field_target_client_options} ftcp WHERE ftcp.entity_id=n.nid AND ficsp.entity_id=n.nid AND fpc.entity_id=n.nid AND fca.entity_id=n.nid AND tgm.uid=:uid AND tgm.gid=n.nid ".$modeQueryPart.$productQueryPart, array(":uid" => $uid));
+  while($CustGroupRow = $result->fetchAssoc()) {
+    $allGroupNids[$CustGroupRow['gid']] = $CustGroupRow['gid'];
+    $resArr['groups'][$access][$CustGroupRow['gid']]['title'] = $CustGroupRow['title'];
+    $resArr['groups'][$access][$CustGroupRow['gid']]['product_category'] = $CustGroupRow['field_product_category_value'];
+    $resArr['groups'][$access][$CustGroupRow['gid']]['jira_originator'] = BTI_get_exportable_group_name($CustGroupRow['gid']);
+    $resArr['groups'][$access][$CustGroupRow['gid']]['jira_customer'] = BTI_get_exportable_account_name_CID($CustGroupRow['field_customer_account_nid']);
+    // should/could remove these 3 fields -above- from all 3 separate sub-arrays
+
+    // summarize some group data in separate sub-array
+    $resArr['groups']['data'][$CustGroupRow['gid']]['title'] = $CustGroupRow['title'];
+    $resArr['groups']['data'][$CustGroupRow['gid']]['inactive_or_admin_hold'] = BTI_isCustomerGroupInHold($CustGroupRow['gid']);
+    if($tmp = textArea2Arr($CustGroupRow['field_in_country_support_options_value'])) {
+      $resArr['groups']['data'][$CustGroupRow['gid']]['in_country_support'] = $tmp;
+    }
+    if($tmp = textArea2Arr($CustGroupRow['field_target_client_options_value'])) {
+      $resArr['groups']['data'][$CustGroupRow['gid']]['target_client'] = $tmp;
+    }
+
+    // cpbx needs to know the main product category of this group to filter the other fields accordingly
+    $resArr['groups']['data'][$CustGroupRow['gid']]['product_category_JiraID'] = $productCategories_drupalID2JiraID[$CustGroupRow['field_product_category_value']];
+  }
+
+  $access = 'view';
+  $modeQueryPart = " AND tgm.mode='".$access."'";
+  //$result = db_query("SELECT tgm.gid, n.title, cg.field_customer_account_nid FROM {ticketing_group_membership} tgm, {node} n, {content_type_customer_group} cg WHERE cg.nid=n.nid AND tgm.uid='".$uid."' AND tgm.gid=n.nid ".$modeQueryPart.$productQueryPart);
+  $result = db_query("SELECT tgm.gid, n.title, cg.field_customer_account_target_id FROM {ticketing_group_membership} tgm, {node} n, {field_data_field_customer_account} cg WHERE cg.entity_id=n.nid AND tgm.uid=:uid AND tgm.gid=n.nid ".$modeQueryPart.$productQueryPart, array(":uid" => $uid));
+  while($CustGroupRow = $result->fetchAssoc()) {
+    $allGroupNids[$CustGroupRow['gid']] = $CustGroupRow['gid'];
+    $resArr['groups'][$access][$CustGroupRow['gid']]['title'] = $CustGroupRow['title'];
+    $resArr['groups'][$access][$CustGroupRow['gid']]['jira_originator'] = BTI_get_exportable_group_name($CustGroupRow['gid']);
+    $resArr['groups'][$access][$CustGroupRow['gid']]['jira_customer'] = BTI_get_exportable_account_name_CID($CustGroupRow['field_customer_account_nid']);
+  }
+
+  $access = 'edit';
+  $modeQueryPart = " AND tgm.mode='".$access."'";
+  //$result = db_query("SELECT tgm.gid, n.title, cg.field_customer_account_nid FROM {ticketing_group_membership} tgm, {node} n, {content_type_customer_group} cg WHERE cg.nid=n.nid AND tgm.uid='".$uid."' AND tgm.gid=n.nid ".$modeQueryPart.$productQueryPart);
+  $result = db_query("SELECT tgm.gid, n.title, cg.field_customer_account_target_id FROM {ticketing_group_membership} tgm, {node} n, {field_data_field_customer_account} cg WHERE cg.entity_id=n.nid AND tgm.uid=:uid AND tgm.gid=n.nid ".$modeQueryPart.$productQueryPart, array(":uid" => $uid));
+  while($CustGroupRow = $result->fetchAssoc()) {
+    $allGroupNids[$CustGroupRow['gid']] = $CustGroupRow['gid'];
+    $resArr['groups'][$access][$CustGroupRow['gid']]['title'] = $CustGroupRow['title'];
+    $resArr['groups'][$access][$CustGroupRow['gid']]['jira_originator'] = BTI_get_exportable_group_name($CustGroupRow['gid']);
+    $resArr['groups'][$access][$CustGroupRow['gid']]['jira_customer'] = BTI_get_exportable_account_name_CID($CustGroupRow['field_customer_account_nid']);
+  }
+
+  // --- second result array: partner accounts, pre-formatted because needed as-is
+  foreach($allGroupNids as $gid) {
+    $result1 = db_query("SELECT * FROM {field_data_field_customer_account} WHERE entity_id=:gid", array(":gid" => $gid));
+    if($CustGroupRow = $result1->fetchAssoc()) {
+      $resArr['groups']['accounts'][$gid]['parent_account_nid'] = $CustGroupRow['field_customer_account_target_id'];
+    } else {
+      $resArr['groups']['accounts'][$gid]['parent_account_nid'] = null;
+    }
+
+    $partner_company_CustomerAccountNid = PartnerCustomerAccountFromCustGroup(user_load($uid), $gid);
+    if($partner_company_CustomerAccountNid) {
+      $partner_company_CustomerAccount = node_load($partner_company_CustomerAccountNid);
+      $resArr['accounts'][$partner_company_CustomerAccountNid]['jira_partner'] = BTI_get_exportable_account_name_CID($partner_company_CustomerAccountNid);
+      $resArr['groups']['accounts'][$gid]['partner_account_nid'] = $partner_company_CustomerAccountNid;
+    } else {
+      $resArr['groups']['accounts'][$gid]['partner_account_nid'] = null;
+    }
+  }
+
+  if($params['json']=='pure') {
+    $version = VERSION;
+    if( $version[0] == '6' ) {
+      // We are returning JSON, so tell the browser.
+      drupal_set_header('Content-Type: application/json');
+    } else {
+      drupal_add_http_header('Content-Type', 'application/json');
+    }
+    return drupal_json_output($resArr);
+  }
+  return drupal_json_output($resArr);
+}
+
+/** =============================================================================================
+ * Used through API calls from CPBX
+ * only supported format: json
+ */
+function get_server_status($params) {
+  $resArr = array();
+
+  switch($params['format']) {
+    case 'json':
+      break;
+    default:
+      return 'unsupported format';
+  }
+
+  $resArr['server'] = 'up';
+  $resArr['ticketingService'] = (variable_get('ticketing_is_online', TRUE)?'online':'offline');
+
+  if($params['json']=='pure') {
+    $version = VERSION;
+    if( $version[0] == '6' ) {
+      // We are returning JSON, so tell the browser.
+      drupal_set_header('Content-Type: application/json');
+    } else {
+      drupal_add_http_header('Content-Type', 'application/json');
+    }
+    return json_encode($resArr);
+  }
+  return drupal_json($resArr);
+}
+
+/** =============================================================================================
+ * Used through API calls
+ */
+function get_latest_account_group_update_timestamp($params) {
+  $queryStr = "select changed from node where type in ('customer_account', 'customer_group') order by changed desc limit 1";
+  $result = db_query($queryStr);
+  if($row = $result->fetchAssoc()) {
+    return $row['changed'];
+  }
+  return 0;
+}
+
+/** =============================================================================================
+ * Used through API calls from Jira (as of 25 march 2015)
+ * Used by Jira to populate the account dropdowns
+
+From Michel, March 2015:
+a ce que je vois, je n'utilise que GroupName, CID, AccountName
+gardons AccountNameCID
+donc evuser et xchangegroupname je les uti,lises pas
+ */
+function get_account_group_data($params) {
+  if(!($params['format']=='csv' || $params['format']=='xml')) {
+    return 'unsupported format';
+  }
+
+  $retStr = '';
+  if($params['output']=='browser') {
+    $EOL = "<br>";
+  } elseif($params['output']=='file') {
+    $EOL = "\n";
+  }
+
+  $now = time();
+
+  // build temp objects
+  $accountArr = array();
+  $groupArr = array();
+  $queryStr = "select n.nid as anid, cg.nid as gnid, n.title as atitle, n2.title as gtitle, ic.field_indirect_customers_nid, ca.field_cid_value from node n, node n2, content_type_customer_group cg, content_field_indirect_customers ic, content_type_customer_account ca where n.type='customer_account' and n.nid=ic.nid and n.nid=ca.nid and cg.field_customer_account_nid=n.nid and cg.nid=n2.nid order by atitle asc";
+  $result = db_query($queryStr);
+  $i = 0;
+  $knownGIDs = array();
+  while($row = db_fetch_array($result)) {
+    $accountArr[$row['anid']]['name'] = $row['atitle'];
+    $accountArr[$row['anid']]['CID'] = $row['field_cid_value'];
+    // filter out duplicates
+    if(!$knownGIDs[$row['gnid']]) {
+      $knownGIDs[$row['gnid']] = TRUE;
+      $groupArr[$i]['gid'] = $row['gnid'];
+      $groupArr[$i]['aid'] = $row['anid'];
+      $groupArr[$i]['name'] = $row['gtitle'];
+      $i++;
+    }
+  }
+
+  if($params['format']=='csv') {
+    $retStr .= 'AccountName,CID,GroupName,AccountNameCID'.$EOL;
+    foreach($groupArr as $i => $gdata) {
+      $retStr .= BTI_get_exportable_account_name($gdata['aid']).','.$accountArr[$gdata['aid']]['CID'].','.BTI_get_exportable_group_name($gdata['gid']).','.BTI_get_exportable_account_name_CID($gdata['aid']).$EOL;
+    }
+  } elseif($params['format']=='xml') {
+    $resArr = array();
+    foreach($groupArr as $i => $gdata) {
+      $tmpArr = array();
+      $tmpArr['Keep'] = 'true';
+      $tmpArr['AccountName'] = BTI_get_exportable_account_name($gdata['aid']);
+      $tmpArr['CID'] = $accountArr[$gdata['aid']]['CID'];
+      $tmpArr['GroupName'] = BTI_get_exportable_group_name($gdata['gid']);
+      $tmpArr['AccountNameCID'] = BTI_get_exportable_account_name_CID($gdata['aid']);
+      $resArr[] = $tmpArr;
+    }
+    return api_array2xml(/*array2dump*/ $resArr, /*extraContext*/ NULL, /*includeContext*/ TRUE, /*makeXMElements*/ FALSE);
+  }
+
+  return $retStr;
+}
+
+/** =============================================================================================
+ * Used through API calls from Jira (as of 25 march 2015)
+ *
+ * optional params elements:
+ *   gid=<group nid>
+
+https://xchangeserver0.broadsoft.com/php/xchange/api?action=get_user_group_data&output=file&token=hhqpNHaVeWgvvQHU&format=csv
+
+ */
+function get_user_group_data($params) {
+  if(!user_access(MANAGE_TICKETING__TICKETING_PERMISSION)) {
+    return "you do not have enough permission to access this API call - or you may have a cookie in the way: logout from the site";
+  }
+
+  if($params['format']!='csv') {
+    return 'unsupported format';
+  }
+
+  $tmpArr = array(); // will be an array of arrays
+
+  // check params
+  $mode = array_element('mode', $params);
+  if($mode && ($mode!='view' || $mode!='edit')) {
+    $mode = NULL; // if error, nullify it
+  }
+
+  if($gid = array_element('gid', $params)) {
+    // only one group
+    $tmp = GetEndUsersAssociated2Group(array('gid'=>$gid, 'format'=>'array'));
+    foreach($tmp as $email) {
+      $tmpArr[$gid][$email] = $email;
+    }
+  } else {
+    // process all groups
+    $queryStr = "SELECT distinct nid FROM node WHERE type='customer_group'";
+    $result = db_query($queryStr);
+    while($row = db_fetch_array($result)) {
+      $tmp = GetEndUsersAssociated2Group(array('gid'=>$row['nid'], 'format'=>'array'));
+      $tmpArr[$row['nid']]['ignore'] = 'ignore'; // quick way to make sure the array element is created for this group
+      foreach($tmp as $email) {
+        $tmpArr[$row['nid']][$email] = $email;
+      }
+    }
+  }
+
+  if($params['format']=='csv') {
+    $csvArr = array();
+    foreach($tmpArr as $gid => $groupAssigneeArr) {
+      $csvRow = array();
+      $aid = BTI_getAccountFromGroup($gid);
+      if(($exportable_group_name=BTI_get_exportable_group_name($gid)) && ($exportable_acc_nameCID=BTI_get_exportable_account_name_CID($aid))) {
+        $csvRow['Group'] = $exportable_group_name;
+        $csvRow['AccountNameCID'] = $exportable_acc_nameCID;
+        $csvRow['Email List'] = '';
+        foreach($groupAssigneeArr as $groupAssignee) {
+          if($groupAssignee!='ignore') {
+            if(strlen($csvRow['Email List']) > 0) {
+              $csvRow['Email List'] .= ', ';
+            }
+            $csvRow['Email List'] .= $groupAssignee;
+          }
+        }
+        if($anode = node_load($aid)) {
+          $csvRow['Region'] .= $anode->field_region[0]["value"];
+          $csvRow['Team'] .= $anode->field_team[0]["value"];
+        } else {
+          $csvRow['Region'] .= "";
+          $csvRow['Team'] .= "";
+        }
+        $csvArr[] = $csvRow;
+      }
+    }
+    return api_array2csv($csvArr);
+  }
+
+  return $retStr;
+}
+
+/** =============================================================================================
+*/
+function broadsoft_ticketing_integration_cron() {
+  monitorTicketing();
+}
+
+
+/** =============================================================================================
+* returns an array of the form
+*  ids (1..) => vals
+*/
+function buildInCountryArray($group){
+  $optionsArray = array();
+  $forcedKey = 1;
+  if(!empty($group['in_country_support'])){
+    foreach($group['in_country_support'] as $id => $val) {
+      $optionsArray[$forcedKey] = $val;
+      $forcedKey++;
+    }
+  }
+  return $optionsArray;
+}

@@ -1,0 +1,24 @@
+diff --git a/tokenauth.install b/tokenauth.install
+index b24fdab..c72ee62 100644
+--- a/tokenauth.install
++++ b/tokenauth.install
+@@ -41,19 +41,6 @@ function tokenauth_install() {
+ }
+
+ /**
+- * Implements hook_enable().
+- */
+-function tokenauth_enable() {
+-  // Assign tokens for each user.
+-  $results = db_query("SELECT u.uid FROM {users} u LEFT JOIN {tokenauth_tokens} tt ON u.uid = tt.uid WHERE tt.token IS NULL AND u.uid > 0");
+-  foreach ($results as $row) {
+-    tokenauth_insert($row->uid);
+-  }
+-  // Clean up orphaned tokens from users removed while module disabled
+-  db_query("DELETE tt.* FROM {tokenauth_tokens} tt WHERE NOT EXISTS (SELECT * FROM {users} u WHERE u.uid=tt.uid)");
+-}
+-
+-/**
+  * Implements hook_uninstall().
+  */
+ function tokenauth_uninstall() {

@@ -1,0 +1,14 @@
+<?php
+
+/** =============================================================================================
+*/
+function broadsoft_file_management_install() {
+}
+
+/** =============================================================================================
+*/
+function broadsoft_file_management_uninstall() {
+  variable_del('broadsoft_file_management_enable_discovery');
+}
+
+?>

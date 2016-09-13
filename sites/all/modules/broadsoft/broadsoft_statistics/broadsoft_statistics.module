@@ -1,0 +1,209 @@
+<?php
+
+/*---------------------------------------------------------------------------------------
+                             broadsoft_statistics 
+                                    module
+                                    
+*** Description: 
+
+Offers a simple way to add a statistic entry from anywhere in the Drupal site
+
+*** Notes: 
+
+The watchdog could be used and would work fine provided that it is managed properly 
+i.e. not letting stats be deleted through watchdog purging. 
+For broadsoft_statistics, we have created a separate table just to simplify and separate watchdog from stats.
+                                    
+---------------------------------------------------------------------------------------*/
+
+/**
+params:
+- type  : string defining the statistic type
+- limit  : the max nb of entries to return (optional)
+
+return : an array of entries of that type, sorted from latest to oldest
+*/
+function broadsoft_statistics_getStats($type) {  
+  $retArr = array();
+  
+  if(isD6()) {
+    // D6
+    $query = "SELECT * from {broadsoft_statistics} ORDER BY timestamp DESC";
+
+    $result = db_query($query);
+    while($rowArr=db_fetch_array($result)) {
+      $retArr[$row['statid']] = $rowArr;
+    }
+  } else {
+    // D7
+    $dbquery = db_select('broadsoft_statistics', 'broadsoft_statistics')
+                ->fields('broadsoft_statistics')
+                ->orderBy('broadsoft_statistics.timestamp', 'DESC') 
+                ->condition('broadsoft_statistics.type', $type, '=');
+    $dbresult = $dbquery->execute();  
+    
+    if($dbresult)  {
+      foreach ($dbresult as $row) {
+        $retArr[$row->statid] = broadsoft_utils_helper_str2array($row->value);
+        $retArr[$row->statid]['uid'] = $row->uid;
+        $retArr[$row->statid]['user'] = bsutil_getMailFromUID($row->uid);
+        $retArr[$row->statid]['timestamp'] = $row->timestamp;
+      }
+    }
+  }
+  
+  return $retArr;
+}
+
+/**
+params:
+- type  : string defining the statistic type
+- value : data to log; can be an int, a string or an array
+*/
+function broadsoft_statistics_addStat($type, $value) {
+  if(empty($type)) {
+    watchdog('BroadSoft Code', 'Invalid call to function; file '.basename(__FILE__).' at line '.__LINE__, NULL, WATCHDOG_ERROR);
+    return;
+  }
+  if(!$value) {
+    watchdog('BroadSoft Code', 'Invalid call to function; file '.basename(__FILE__).' at line '.__LINE__, NULL, WATCHDOG_ERROR);
+    return;
+  }
+
+  global $user;
+
+  if(!is_array($value)) {
+    $value_tmp = $value;
+    $value = array();
+    $value['value'] = $value_tmp;
+  }
+  
+  // add fields to log
+  $value['context_uri'] = request_uri();
+
+  db_query("INSERT INTO {broadsoft_statistics} (uid, timestamp, type, value) VALUES (:uid,:time, :type, :value)", array(":uid" => $user->uid, ":time" => time(), ":type" => $type, ":value" => broadsoft_utils_helper_array2str($value)));
+}
+
+/********************************************************************
+interacts with accesslog table from statistics module
+
+Counts monthly unique hits based on term association
+
+*/
+function GetAccessLogPerMonth($termIDArr=NULL, $nodeTypeArr=NULL, $sort='FROM_GET') {
+  // get sort direction from get if not received in param
+  if($sort=='FROM_GET') {
+    $sort = filter_input(INPUT_GET, 'sort', FILTER_SANITIZE_STRING,  FILTER_FLAG_NO_ENCODE_QUOTES | FILTER_FLAG_STRIP_HIGH | FILTER_FLAG_STRIP_LOW);
+  }
+  $sort = trim(strtolower($sort));
+  if(!($sort=='asc'||$sort=='desc')) {
+    $sort = 'desc'; // default
+  }
+
+  $retArray = array();
+  $sql = "
+    SELECT month(FROM_UNIXTIME(accesslog.timestamp)) as month, # 1..12
+           monthname(FROM_UNIXTIME(accesslog.timestamp)) as monthstr, # e.g. January....
+           year(FROM_UNIXTIME(accesslog.timestamp)) as year, # e.g. 2016
+           DATE_FORMAT(FROM_UNIXTIME(accesslog.timestamp),'%Y%m') as YYYYMM,
+           count(accesslog.timestamp) as count
+    FROM accesslog, node, taxonomy_index
+    WHERE accesslog.path REGEXP 'node/[[:digit:]]+$'
+    AND Replace(accesslog.path, 'node/', '')=node.nid";
+  if($termIDArr) {
+    $str = "";
+    foreach($termIDArr as $val) {
+      $str .= $val.",";
+    }
+    $str = preg_replace('/,$/', '', $str);
+    $sql .= "    
+      AND node.nid=taxonomy_index.nid
+      AND taxonomy_index.tid IN (".$str.")";
+  }
+
+  if($nodeTypeArr) {
+    $str = "";
+    foreach($nodeTypeArr as $val) {
+      $str .= "'".$val."',";
+    }
+    $str = preg_replace('/,$/', '', $str);
+    $sql .= "
+      AND node.type IN (".$str.")";
+  }
+  
+  $sql .= "
+    GROUP BY YYYYMM
+    ORDER BY YYYYMM ".$sort.";
+  ";
+
+  $result = db_query($sql);
+  while($row = $result->fetchAssoc()) {
+    $element = new stdClass;
+    $element->year_month = $row['YYYYMM'];
+    $element->count = $row['count'];
+    $element->monthstr = $row['monthstr'];
+    $element->month = $row['month'];
+    $element->year = $row['year'];
+
+    $retArray[] = $element;
+  }
+  return $retArray;
+}
+
+/********************************************************************
+
+*/
+function GetAccessLogPerMonthGraph($termIDArr=NULL, $nodeTypeArr=NULL) {
+  $retHTML = "";
+
+  $stats = GetAccessLogPerMonth($termIDArr, $nodeTypeArr);
+
+  // graphic
+  $monthdate = "&chxl=1:";
+  $totalFAQs = "&chd=t:";
+  $maxY=0;
+  foreach($stats as $monthyear => $monthData) {
+    $monthdate .= "|" .$monthData->month."/" .substr($monthData->year,2,2);
+    $totalFAQs .= $monthData->count.",";
+    if($monthData->count>$maxY) {
+      $maxY = $monthData->count;
+    }
+  }
+  $maxY += 100; // leave some space for cleanliness
+
+  $totalFAQs = substr($totalFAQs,0,strlen($totalFAQs)-1);
+
+  $googlechart = "http://chart.apis.google.com/chart";
+  $googlechart .= "?cht=bvg";
+  $googlechart .= "&chxr=0,0,".$maxY;
+  $googlechart .= "&chxt=y,x";
+  $googlechart .= "&chbh=r,0.2,1";
+  $googlechart .= "&chtt=FAQ+Knowledge+Base+Articles+Unique+Views";
+  $googlechart .= "&chco=F78618";
+  $googlechart .= "&chs=740x300";
+  $googlechart .= "&chds=0,".$maxY;
+  $googlechart .= $totalFAQs;
+  $googlechart .= "&chdlp=b";
+  $googlechart .= $monthdate;
+  $googlechart .= "&chm=N,000000,0,-1,9";
+  $googlechart .= "&chg=0,10,1,1,5";
+
+  $retHTML .= "<p>&nbsp";
+
+  $retHTML .= "<center><img src='".$googlechart."'>";
+
+  $retHTML .= "<p>&nbsp</p><p>";
+  
+  return $retHTML;
+}
+
+/**
+* Implementation of hook_views_api().
+*/
+function broadsoft_statistics_views_api() {
+  return array(
+    'api' => 3.0,
+    'path' => drupal_get_path('module', 'broadsoft_statistics') . '/includes',    
+  );
+}
+?>

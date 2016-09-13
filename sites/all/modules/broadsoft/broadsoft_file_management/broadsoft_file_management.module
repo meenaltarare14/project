@@ -1,0 +1,421 @@
+<?php
+
+/*---------------------------------------------------------------------------------------
+                             broadsoft_file_management
+                                    module
+
+*** Description:
+
+Handles file discovery
+
+*** Notes:
+
+---------------------------------------------------------------------------------------*/
+define("DISCOVERY_BASE_URI1", "private:\/\/from_sync\/");
+define("DISCOVERY_BASE_URI2", "private:\/\/filebuilder_working_directory\/ftp\/");
+
+define("WD_DISCOVERY", "File Discovery");
+
+/** =============================================================================================
+*/
+function broadsoft_file_management_init() {
+	// module_load_include(file type, module name, typeless file name);
+	module_load_include('install', 'broadsoft_file_management', 'broadsoft_file_management');
+// @@@ hmm, the following is not working i.e. setting the variable to true at install time...
+//  variable_set('broadsoft_file_management_enable_discovery', TRUE); // not GUI-managed for now! Change using
+}
+
+/** =============================================================================================
+* Implements hook_file_mimetype_mapping_alter().
+*/
+function broadsoft_file_management_file_mimetype_mapping_alter(&$mapping) {
+  // Fix the mime type mapping
+  $new_mappings['plist'] = 'text/xml';
+  $new_mappings['ipa'] = 'application/octet-stream';
+  $new_mappings['apk'] = 'application/vnd.android.package-archive';
+  $new_mappings['jad'] = 'text/vnd.sun.j2me.app-descriptor';
+  $new_mappings['wml'] = 'text/vnd.wap.wml';
+  $new_mappings['cod'] = 'application/vnd.rim.cod';
+
+  foreach ( $new_mappings as $extension => $mime_type) {
+    if (!in_array($mime_type, $mapping['mimetypes'])) {
+      // If the mime type does not already exist, add it.
+      $mapping['mimetypes'][] = $mime_type;
+    }
+    // Get the index of the mime type and assign the extension to that key.
+    $index = array_search($mime_type, $mapping['mimetypes']);
+    $mapping['extensions'][$extension] = $index;
+  }
+}
+
+/** =============================================================================================
+*/
+function helper_find_all_files($dir) {
+  $root = scandir($dir);
+  foreach($root as $value) {
+    if($value === '.' || $value === '..') {continue;}
+    if(is_file("$dir/$value")) {$result[]="$dir/$value";continue;}
+    foreach(helper_find_all_files("$dir/$value") as $value) {
+      $result[]=$value;
+    }
+  }
+  return $result;
+}
+
+/** =============================================================================================
+*/
+function broadsoft_file_management_process1dir( $path ) {
+  if(!variable_get('broadsoft_file_management_enable_discovery')) {
+    watchdog(WD_DISCOVERY, 'Discovery is NOT enabled, aborting discovery. To change this: %> drush vset broadsoft_file_management_enable_discovery 1', NULL, WATCHDOG_WARNING);
+    return;
+  }
+  $fileArr = helper_find_all_files($path);
+  foreach($fileArr as $i => $file)
+    broadsoft_file_management_process1file( $file );
+}
+
+/** =============================================================================================
+*/
+function broadsoft_file_management_process1file( $filepath ) {
+  if(!variable_get('broadsoft_file_management_enable_discovery')) {
+    watchdog(WD_DISCOVERY, 'Discovery is NOT enabled, aborting discovery. To change this: %> drush vset broadsoft_file_management_enable_discovery 1', NULL, WATCHDOG_WARNING);
+    return;
+  }
+
+  $fileTypeConfig = helper_getFileTypeConfig($filepath);
+  if(!$fileTypeConfig) {
+    watchdog(WD_DISCOVERY, 'Filtering out file ('.$filepath.') - skipped', NULL, WATCHDOG_WARNING);
+    return;
+  }
+
+  $uri = "private:/".preg_replace('/'.preg_replace('/\//', '\/', variable_get('file_private_path')).'/', '', $filepath);
+  // check if already in DB
+  $fileObj = helper_broadsoft_file_management__get_file_object($uri);
+  if($fileObj) {
+    // update if needed - based on filedisk change
+    $filesizeDisk = filesize($uri);
+    if($fileObj->filesize != $filesizeDisk) {
+      watchdog(WD_DISCOVERY, 'Processing file ('.$filepath.'): File size has changed - updating file data in DB', NULL, WATCHDOG_DEBUG);
+      helper_broadsoft_file_management__update_file($uri, $fileObj);
+    }
+  } else {
+    // create and send notification email
+    watchdog(WD_DISCOVERY, 'Processing file ('.$filepath.'): New unknown File', NULL, WATCHDOG_DEBUG);
+    helper_broadsoft_file_management__create_new_FileWrapper($uri, $fileTypeConfig);
+  }
+}
+
+/** =============================================================================================
+*/
+function helper_broadsoft_file_management__update_file($uri, $fileObj) {
+  // update fields:
+  // - filesize
+  // - timestamp (set to now...)
+  // - md5sum
+  $filesizeDisk = filesize($uri);
+  db_update('file_managed')
+  ->fields(array('filesize' => $filesizeDisk, 'timestamp' => time(),))
+  ->condition('fid', $fileObj->fid)
+  ->execute();
+
+  helper_broadsoft_file_management__updateMD5SUM($uri);
+}
+
+/** =============================================================================================
+* returns NULL if file type is not supported OR filtered out
+*/
+function helper_getFileTypeConfig($filepath) {
+  $knownFileTypes = array(
+    // following extensions: define only if default Drupal mime needs to be overriden
+//@@@    'pdf'   => array('mimetype' => 'application/pdf',),
+//@@@    'txt'   => array('mimetype' => 'text/plain',),
+//@@@    'plist' => array('mimetype' => 'text/xml',), // 'application/x-plist',),
+//@@@    'dmg'   => array('mimetype' => 'application/x-apple-diskimage',),
+//@@@    'ipa'   => array('mimetype' => 'application/octet-stream',),
+//@@@    'apk'   => array('mimetype' => 'application/vnd.android.package-archive',),
+//@@@    'jad'   => array('mimetype' => 'text/vnd.sun.j2me.app-descriptor',),
+//@@@    'wml'   => array('mimetype' => 'text/vnd.wap.wml',),
+//@@@    'cod'   => array('mimetype' => 'application/vnd.rim.cod',),
+//@@@    'zip'   => array('mimetype' => 'application/zip',),
+//@@@    'png'   => array('mimetype' => 'image/png',),
+  );
+
+  $retMime = NULL;
+
+  $path_info = pathinfo($filepath);
+
+  // get file extensions allowed through GUI-config for document_discovered content type
+  $entity_type = 'node';
+  $field_name = 'field_file_discovered';
+  $bundle_name = 'document_discovered';
+  $data = field_info_instance($entity_type, $field_name, $bundle_name);
+  // typical value: string e.g. "jpg png txt doc docx xls xlsx pdf ppt pptx mpp zip ipa apk jad wml dmg plist cod"
+  if($data && isset($data['settings']['file_extensions'])) {
+    if(preg_match('/'.$path_info['extension'].'/', $data['settings']['file_extensions'])) {
+      $retMime = array('mimetype' => NULL);
+    } else
+      watchdog(WD_DISCOVERY, 'File is NOT allowed as per config (document_discovered allowed file extensions)', NULL, WATCHDOG_DEBUG);
+  }
+
+  if(preg_match('/ /', $filepath)) { // filter out space in filenames
+    watchdog(WD_DISCOVERY, 'File is filtered out: space in filepath ('.$filepath.')', NULL, WATCHDOG_WARNING);
+    $retMime = NULL;
+  }
+
+  if(in_array($path_info['extension'], array_keys($knownFileTypes)))
+    $retMime = $knownFileTypes[$path_info['extension']];
+
+  return $retMime;
+}
+
+/** =============================================================================================
+*/
+function helper_broadsoft_file_management__get_file_object($uri) {
+
+  $fid = db_query('SELECT fid FROM {file_managed} WHERE uri = :uri', array(':uri' => $uri))->fetchField();
+  if (!empty($fid)) {
+    $file_object = file_load($fid);
+    return $file_object;
+  }
+  return FALSE;
+}
+
+/** =============================================================================================
+*/
+function helper_broadsoft_file_management__updateMD5SUM($uri) {
+  $md5sum = md5_file($uri);
+
+  $fileObj = reset(file_load_multiple(array(), array('uri' => $uri))); // If empty, $fileObj will be false, otherwise will contain the required file
+  if($fileObj) {
+    // might be for a discovered OR an uploaded file
+    $record = db_select('field_data_field_file_discovered', 't1')
+              ->fields('t1', array('entity_id'))
+              ->condition('t1.field_file_discovered_fid', $fileObj->fid, '=')
+              ->execute()
+              ->fetchAssoc();
+    if(!$record) {
+      $record = db_select('field_data_field_file_uploaded', 't1')
+                ->fields('t1', array('entity_id'))
+                ->condition('t1.field_file_uploaded_fid', $fileObj->fid, '=')
+                ->execute()
+                ->fetchAssoc();
+    }
+
+    if(!$record) {
+      watchdog(WD_DISCOVERY, 'File is not associated to a node? uri ('.$uri.')', NULL, WATCHDOG_WARNING);
+      return;
+    }
+
+    db_update('field_data_field_md5sum')
+    ->fields(array('field_md5sum_value' => $md5sum,))
+    ->condition('entity_id', $record['entity_id'])
+    ->execute();
+
+    watchdog(WD_DISCOVERY, 'Updated md5sum for file ('.$uri.'), node ('.$record['entity_id'].'), m5sum='.$md5sum, NULL, WATCHDOG_DEBUG);
+  }
+}
+
+
+/** =============================================================================================
+*/
+function helper_broadsoft_file_management__create_new_FileWrapper($uri, $fileTypeConfig) {
+  $now = time();
+  $publish = FALSE; // dflt case, but possibly modified below
+  $authorUID = 1;
+
+  // detect if coming from from_sync or ftp dir
+  $DISCOVERY_BASE_URI = DISCOVERY_BASE_URI1; // dflt case
+  if(preg_match('/'.DISCOVERY_BASE_URI2.'/', $uri))
+    $DISCOVERY_BASE_URI = DISCOVERY_BASE_URI2;
+
+  $dirIdentifier = preg_replace('/\/.*/', '', preg_replace('/'.$DISCOVERY_BASE_URI.'/', '', $uri));
+  $fileIsPublic = preg_match('/publicContent/', $dirIdentifier);
+
+  // some exceptions. To make configurable one day maybe?
+  if(preg_match('/'.$DISCOVERY_BASE_URI.'BroadTouch\//', $uri)) {
+    $dirIdentifier = 'someimpossiblevalue___';
+    // take 3 levels as dir identifier
+    if(preg_match('/'.$DISCOVERY_BASE_URI.'BroadTouch\/build/', $uri))
+      $dirIdentifier = 'BroadTouch/build';
+    elseif(preg_match('/'.$DISCOVERY_BASE_URI.'BroadTouch\/branded/', $uri))
+      $dirIdentifier = 'BroadTouch/branded/'.preg_replace('/\/.*/', '', preg_replace('/.*\/BroadTouch\/branded\//', '', $uri));
+    elseif(preg_match('/'.$DISCOVERY_BASE_URI.'BroadTouch\/generic/', $uri))
+      $dirIdentifier = 'BroadTouch/generic/'.preg_replace('/\/.*/', '', preg_replace('/.*\/BroadTouch\/generic\//', '', $uri));
+  }
+
+  if(bsutil_isExtranetSite()) {
+    $query = db_select('node', 'n');
+    $query->join('field_data_field_disk_base_dir', 't1', 't1.entity_id = n.nid');
+
+    $record = $query  ->fields('t1', array('field_disk_base_dir_value'))
+                      ->fields('n', array('nid'))
+                      ->condition('t1.field_disk_base_dir_value', $dirIdentifier, '=')
+                      ->execute()
+                      ->fetchAssoc();
+
+    if(!$record) {
+      watchdog(WD_DISCOVERY, 'File detected under unmanaged dir ('.$dirIdentifier.') - skipped', NULL, WATCHDOG_WARNING);
+      $msgArr = array();
+      $msgArr[] = '-  SKIPPING FILE - ';
+      $msgArr[] = 'File detected under unmanaged dir ('.$dirIdentifier.')';
+      $msgArr[] = '-  SKIPPING FILE - ';
+      //@@@bsutil_sendEmailNoAttachment(XCHANGESUPPORT_EMAIL, "[BroadSoft Extranet] >  file discovery notice", $msgArr);
+
+      return;
+    }
+
+    $gid = $record['nid']; // nid IS the group (node) id) + will be same on each iteration...
+    $ownerData = bsutil_getGroupOwnershipData($gid);
+
+    watchdog(WD_DISCOVERY, 'File associated to OGGroup ('.$gid.')', NULL, WATCHDOG_DEBUG);
+  }
+
+  // verify if file is already known based on md5sum
+  $record = db_select('field_data_field_md5sum', 't1')
+            ->fields('t1', array('entity_id'))
+            ->condition('t1.field_md5sum_value', md5_file($uri), '=')
+            ->execute()
+            ->fetchAssoc();
+  if($record) {
+    watchdog(WD_DISCOVERY, 'File duplication detected (same md5sum): existing nid ('.$record['entity_id'].'), new uri ('.$uri.') - skipped', NULL, WATCHDOG_WARNING);
+    $tmpNode = new stdClass();
+    $tmpNode->nid=$record['entity_id'];
+    $tmpNode->title='Duplicated File';
+
+    $msgArr = array();
+    $msgArr = bsutil_prepareDiscoveryMessage('skipped','system discovery',$tmpNode);
+
+    $msgArr[] = 'existing nid is: '.$record['entity_id'].'';
+    $msgArr[] = 'new file uri is: '.$uri.'';
+
+    if($ownerData['notifyOwners']) bsutil_sendEmailNoAttachment($ownerData['ownerEmailList'], "[BroadSoft Extranet] >  file discovery notice", $msgArr);
+
+    return;
+  }
+
+  if(bsutil_isExtranetSite()) {
+    if($fileIsPublic) {
+      watchdog(WD_DISCOVERY, 'Public File discovered', NULL, WATCHDOG_DEBUG);
+    } else {
+      // get auto-publish setting
+      $record = db_select('field_data_field_publish_on_file_discovery', 't1')
+                ->fields('t1', array('field_publish_on_file_discovery_value'))
+                ->condition('t1.entity_id', $gid, '=')
+                ->execute()
+                ->fetchAssoc();
+      if(!$record)
+        watchdog(WD_DISCOVERY, 'Auto-publish value not known - using default', NULL, WATCHDOG_WARNING);
+      else
+        $publish = $record['field_publish_on_file_discovery_value'];
+    }
+  } else {
+    watchdog(WD_DISCOVERY, 'File discovery not handled yet for non-OG sites - skipped', NULL, WATCHDOG_WARNING);
+    return;
+  }
+
+  // 1 ......... node creation .........
+  $extracted_title = drupal_basename($uri);
+  $extracted_body = "This is a container node for file ".drupal_basename($uri);
+
+  $node = new stdClass();
+	$node->status = $publish;
+	$node->created = $now;
+	$node->uid = $authorUID;
+	$node->title = $extracted_title;
+	$node->promote = 0;
+	$node->sticky = 0;
+  $node->language = 'und';
+  $node->comment = 0;
+  $node->body[$node->language][0]['value'] = $extracted_body;
+  $node->body[$node->language][0]['format'] = 'full_html';
+  $node->type = 'document_discovered';
+
+  node_object_prepare($node);
+  $node = node_submit($node);
+  node_save($node);
+
+  watchdog(WD_DISCOVERY, 'Created node ('.$node->nid.') for discovered file ('.$uri.')', NULL, WATCHDOG_DEBUG);
+
+  // 2 ......... Attach File .........
+  $fileTmp = new stdClass();
+  $fileTmp->fid = NULL;
+  $fileTmp->uri = $uri;
+  $fileTmp->filename = drupal_basename($uri);
+  $fileTmp->filesize = filesize($uri);
+  if($fileTypeConfig['mimetype']) // maybe NULL: means to let Drupal decide
+    $fileTmp->filemime = $fileTypeConfig['mimetype'];
+  else
+    $fileTmp->filemime = file_get_mimetype($uri); // let Drupal decide
+  $fileTmp->uid = $authorUID;
+  $fileTmp->status = FILE_STATUS_PERMANENT;
+  $fileTmp->timestamp = $now;
+  $fileTmp->origname = drupal_basename($uri);
+
+  $msgArr = bsutil_prepareDiscoveryMessage('discover','system discovery',$node,$fileTmp);
+  if($ownerData['notifyOwners']) bsutil_sendEmailNoAttachment($ownerData['ownerEmailList'], "[BroadSoft Extranet] >  file discovery notice", $msgArr);
+
+  // $fileObj = file_save($fileTmp);  // this would be the preferred way, but it moves the file, which is no good!
+  // so, forced to tweak things a bit:
+  drupal_write_record('file_managed', $fileTmp);
+  // get back fid from what was written
+  $record = db_select('file_managed', 'file_managed')
+            ->fields('file_managed', array('fid'))
+            ->condition('file_managed.uri', $uri, '=')
+            ->execute()
+            ->fetchAssoc();
+  if(!$record) {
+    watchdog(WD_DISCOVERY, 'File Wrapper creation error', NULL, WATCHDOG_ERROR);
+    return;
+  }
+  $fileObj = file_load($record['fid']);
+
+  $node->field_file_discovered[$node->language][] = array(
+    'fid' => $fileObj->fid,
+    'filename' => $fileObj->filename,
+    'filemime' => $fileObj->filemime,
+    'uid' => $authorUID,
+    'uri' => $fileObj->uri,
+    'status' => 1,
+    'display' => 1
+  );
+  node_save($node);
+  helper_broadsoft_file_management__updateMD5SUM($uri);
+
+  // 3 ......... OG - group association .........
+  // @@@ here: loop through OG group list - field ldap group name...
+  if($fileIsPublic) {
+    db_update('field_data_group_content_access')
+    ->fields(array('group_content_access_value' => 1,))
+    ->condition('entity_id', $node->nid)
+    ->execute();
+    watchdog(WD_DISCOVERY, 'Setup node ('.$node->nid.') for public access', NULL, WATCHDOG_DEBUG);
+  } else
+    bsutils_associateNode2Group($node, $gid, $publish);
+}
+
+
+define("BROADSOFT_FILE_MANAGEMENT_PROCESS_1_FILE", "");
+define("BROADSOFT_FILE_MANAGEMENT_PROCESS_1_DIR", "");
+
+/**
+ *
+ * @return multitype:multitype:string multitype:string
+ */
+function broadsoft_file_management_menu() {
+  $items = array();
+
+  $items['admin/config/search/broadsoft_file_management'] = array(
+      'title' => 'BroadSoft Discovery Process',
+      'description' => 'Force a discovery on files or directories.',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('broadsoft_file_management_admin_config_form'),
+      'access arguments' => array('access administration pages'),
+      'type' => MENU_NORMAL_ITEM,
+      'file'=>'broadsoft_file_management.admin.inc'
+  );
+
+  return $items;
+}
+
+
+?>

@@ -1,0 +1,11 @@
+; $Id:
+name = BroadSoft Ticketing Integration
+description = Provide a Customer-Facing Integration with the BroadSoft Ticketing System
+package = "Broadsoft"
+project = "Broadsoft"
+version = "7.0"
+core = "7.x"
+stylesheets[all][] = ../broadsoft_utils/jquery-ui-1.9.2.custom/css/custom-theme/jquery-ui-1.9.2.custom.css
+scripts[] = ../broadsoft_utils/jquery-ui-1.9.2.custom/js/jquery-ui-1.9.2.custom.js
+scripts[] = dynamic_ticketing.js
+

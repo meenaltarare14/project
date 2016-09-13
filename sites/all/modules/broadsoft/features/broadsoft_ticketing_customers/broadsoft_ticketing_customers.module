@@ -1,0 +1,7 @@
+<?php
+/**
+ * @file
+ * Code for the Broadsoft Ticketing Customers feature.
+ */
+
+include_once 'broadsoft_ticketing_customers.features.inc';

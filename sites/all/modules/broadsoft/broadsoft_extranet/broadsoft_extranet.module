@@ -1,0 +1,281 @@
+<?php
+
+/*---------------------------------------------------------------------------------------
+                                broadsoft_extranet
+                                    module
+                                    
+*** Description: 
+
+*** Notes: 
+                                    
+---------------------------------------------------------------------------------------*/
+  
+define('DOCUMENT_UPLOADED_TYPE_MACHINE_NAME', 'document_uploaded');
+define('DOCUMENT_DISCOVERED_TYPE_MACHINE_NAME', 'document_discovered');
+
+/** =============================================================================================
+* Hook for search engine interaction
+* https://api.drupal.org/api/drupal/modules%21node%21node.api.php/function/hook_node_update_index/7
+*
+* Intent: generate meaningful text to add at indexing time, 
+* as it is not currently well managed by the default search engine (in particular: file names are not searchable)
+*/
+function broadsoft_extranet_node_update_index($node) {
+  $add2searchIndexStr = NULL;
+  $fileuri = NULL;
+
+  // possibly added strings:
+  // - group name
+  // - filename & path: exploded version  
+  if($node->type == DOCUMENT_DISCOVERED_TYPE_MACHINE_NAME) {
+    $dirname = dirname($node->field_file_discovered[$node->language][0]['uri']);
+    $dirname = preg_replace('/private:/', '', $dirname); 
+    $dirname = preg_replace('/from_sync/', '', $dirname); 
+    $add2searchIndexStr .= preg_replace('/[\/_-]/', ' ', $dirname); // treat some delimiter chars as word boundaries in file path
+
+    $fileuri = $node->field_file_discovered[$node->language][0]['filename'];
+    $strTmp = preg_replace('/[._-]/', ' ', $node->field_file_discovered[$node->language][0]['filename']); // treat some delimiter chars as word boundaries in file name
+    $add2searchIndexStr .= ' '.preg_replace('/(?<!^)([a-z])([A-Z])/', '\\1 \\2', $strTmp); // add space at each case change to uppercase, to create word boundaries
+  } elseif($node->type == DOCUMENT_UPLOADED_TYPE_MACHINE_NAME) {
+    $strTmp = preg_replace('/[._-]/', ' ', $node->field_file_uploaded[$node->language][0]['filename']); // treat some delimiter chars as word boundaries in file name
+    $add2searchIndexStr .= preg_replace('/(?<!^)([a-z])([A-Z])/', '\\1 \\2', $strTmp); // add space at each case change to uppercase, to create word boundaries
+  } elseif($node->type == FILEDEPOT_FOLDER_TYPE_MACHINE_NAME) {
+    if( isset($node->filedepot_folder_file) && isset($node->filedepot_folder_file[$node->language]) )
+      foreach($node->filedepot_folder_file[$node->language] as $i => $f) { // filename only
+        $strTmp = preg_replace('/[._-]/', ' ', $f['filename']); // treat some delimiter chars as word boundaries in file name
+        $add2searchIndexStr .= ' '.preg_replace('/(?<!^)([a-z])([A-Z])/', '\\1 \\2', $strTmp); // add space at each case change to uppercase, to create word boundaries
+      }
+  }     
+
+  if($add2searchIndexStr) {
+    // remove any 1-char sequences
+    $add2searchIndexStr = preg_replace('/\s\S\s/', ' ', $add2searchIndexStr);
+    // remove any 2-char sequences
+    $add2searchIndexStr = preg_replace('/\s\S\S\s/', ' ', $add2searchIndexStr);
+    watchdog('BroadSoft Code', 'Adding search index ('.$add2searchIndexStr.') on nid ('.$node->nid.')', NULL, WATCHDOG_DEBUG);
+  }
+  
+  return $add2searchIndexStr;
+}
+
+/** =============================================================================================
+ * must enforce relative path:
+ * no spaces
+ * has the form BroadTouch/branded/AAA
+ * has the form BroadTouch/generic/(maybe sub dir)/AAA
+*/
+function broadsoft_extranet_node_validate($node, $form, &$form_state) {
+  $errorMsg = 'Disk Base Directory field must be of the form BroadTouch/branded/AAA or BroadTouch/generic/(maybe subdir)/AAA where AAA (case sensitive) is the specific group directory name containing only alphanumerical or underscore characters';
+  if($node->type == ACCESS_GROUP_TYPE_MACHINE_NAME) {
+    if(strlen($node->field_disk_base_dir[$node->language][0]['value'])) {
+      if(preg_match('/^BroadTouch\/branded\//', $node->field_disk_base_dir[$node->language][0]['value'])) {
+        if(!preg_match('/^BroadTouch\/branded\/[a-zA-Z0-9_]+$/', $node->field_disk_base_dir[$node->language][0]['value'])) {
+          form_set_error('Disk Base Directory', t($errorMsg));
+        }
+      } elseif(preg_match('/^BroadTouch\/generic\//', $node->field_disk_base_dir[$node->language][0]['value'])) {
+        if(!preg_match('/^BroadTouch\/generic\/[a-zA-Z0-9_\/]+$/', $node->field_disk_base_dir[$node->language][0]['value'])) {
+          form_set_error('Disk Base Directory', t($errorMsg));
+        }
+      } else {
+        form_set_error('Disk Base Directory', t($errorMsg));
+      }
+
+    }
+  }
+}
+
+/** =============================================================================================
+* If LDAP Group Name changed, make sure it gets created on the LDAP server
+*
+* There are some incomplete use cases to handle manually or automatically (eventually):
+* - LDAP Group Name change: should make change on LDAP instead of creating new group from scratch on LDAP
+* - Acces Group deletion: should remove group from LDAP... but things might not be that simple e.g. what if 
+*   that group is in usage by another site? Maybe just "flag as unused" and/or have reports show group usage 
+*   to help decide about group manual deletion. FFT.
+*/
+function broadsoft_extranet_node_update($node) {
+  global $user;
+  if($node->type == ACCESS_GROUP_TYPE_MACHINE_NAME) {
+    $LDAPServer = new LDAPIntegration();  
+    $LDAPServer->createGroup(bum_helper_get_LDAP_Group_prefix().$node->field_ldap_group_name[$node->language][0]['value']);
+
+    // This will be reverted in hook entity insert in broadsoft_filedepot.module
+    if (!user_access('administer filedepot')) {
+      $rid = array_search('OG_Managers', user_roles());
+      user_role_grant_permissions($rid, array('administer filedepot'));
+    }    
+    if(strlen($node->field_disk_base_dir[$node->language][0]['value'])) {
+      $baseuri = variable_get('file_private_path');
+      $extraDir = $node->field_disk_base_dir[$node->language][0]['value'];      
+      $absdir = $baseuri.'/filebuilder_working_directory/ftp/'.$extraDir;
+      @mkdir($absdir);
+      @chmod($absdir, 0775); // grant group write access
+      watchdog('BroadSoft Code', 'Created dir ('.$absdir.')', NULL, WATCHDOG_DEBUG);
+    }    
+  } elseif($node->type == DOCUMENT_UPLOADED_TYPE_MACHINE_NAME) {
+    foreach($node->og_group_ref[$node->language] as $i => $row) {
+      $gid = $row['target_id'];
+      $ownerData = bsutil_getGroupOwnershipData($gid);
+      
+      watchdog('BroadSoft Code', 'Created node ('.$node->nid.') for uploaded file, gid is ('.$gid.')', NULL, WATCHDOG_DEBUG);
+      $msgArr = bsutil_prepareDiscoveryMessage('update', $user->mail, $node);
+      
+      if($ownerData['notifyOwners']) bsutil_sendEmailNoAttachment($ownerData['ownerEmailList'], "[BroadSoft Extranet] > file change notice", $msgArr);
+    }         
+  }    
+}
+
+/** =============================================================================================
+*/
+function broadsoft_extranet_node_insert($node) {
+  global $user;
+  //............................................................................
+  if($node->type == ACCESS_GROUP_TYPE_MACHINE_NAME) {
+    // On group creation, make sure LDAP Group Name gets created on the LDAP server      
+    $LDAPServer = new LDAPIntegration();      
+    $LDAPServer->createGroup(bum_helper_get_LDAP_Group_prefix().$node->field_ldap_group_name[$node->language][0]['value']);
+    // also, associate group audience to itself automatically...
+    bsutils_associateNode2Group($node, $node->nid, TRUE);
+
+    // This will be reverted in hook entity insert in broadsoft_filedepot.module
+    if (!user_access('administer filedepot')) {
+      $rid = array_search('OG_Managers', user_roles());
+      user_role_grant_permissions($rid, array('administer filedepot'));
+    }
+    
+    if(array_key_exists(0, $node->field_disk_base_dir[$node->language]) && strlen($node->field_disk_base_dir[$node->language][0]['value'])) {
+      $extraDir = $node->field_disk_base_dir[$node->language][0]['value'];      
+      $baseuri = variable_get('file_private_path');
+      $absdir = $baseuri.'/filebuilder_working_directory/ftp/'.$extraDir;
+      @mkdir($absdir);
+      @chmod($absdir, 0775); // grant group write access
+      watchdog('BroadSoft Code', 'Created dir ('.$absdir.')', NULL, WATCHDOG_DEBUG);
+    }    
+  //............................................................................
+  } elseif($node->type == DOCUMENT_UPLOADED_TYPE_MACHINE_NAME) {
+    // 1- adjust file md5sum
+    // from http://anthonypower.com/notebook/assigning-node-field-values-hook-insert-and-update-right-way
+    $fid = $node->field_file_uploaded[$node->language][0]['fid'];
+    $file_object = file_load($fid);
+    $uri = $file_object->uri;
+    $md5sum = md5_file($uri);        
+    $node->original = isset($node->original) ? $node->original : NULL; // Need to set the original property to avoid errors.
+    $node->field_md5sum[$node->language][0]['value'] = $md5sum;
+    watchdog('BroadSoft Code', 'Assigning md5sum value ('.$md5sum.') for uploaded file, nid is ('.$node->nid.')', NULL, WATCHDOG_DEBUG);
+    field_attach_update('node', $node);
+     
+    // 2- adjust OG audience
+    foreach($node->og_group_ref[$node->language] as $i => $row) {
+      $gid = $row['target_id'];
+      $ownerData = bsutil_getGroupOwnershipData($gid);
+      
+      watchdog('BroadSoft Code', 'Created node ('.$node->nid.') for uploaded file, gid is ('.$gid.')', NULL, WATCHDOG_DEBUG);
+      $msgArr = bsutil_prepareDiscoveryMessage('create', $user->mail, $node, $file_object);
+      
+      if($ownerData['notifyOwners']) bsutil_sendEmailNoAttachment($ownerData['ownerEmailList'], "[BroadSoft Extranet] > file creation notice", $msgArr);
+    }         
+  //............................................................................
+  } elseif($node->type == FILEDEPOT_FOLDER_TYPE_MACHINE_NAME) {
+    // must set og_group_ref
+    $record = db_select('filedepot_categories', 't1')
+              ->fields('t1', array('cid', 'pid', 'nid', 'group_nid'))
+              ->condition('t1.name', $node->title, '=')
+              ->execute()
+              ->fetchAssoc();
+    if($record) {
+      // THIS folder's data
+      $addedFolderCategoryID = $record['cid'];
+      $addedFolderCategoryPID = $record['pid'];
+      $addedFolderCategoryNID = $record['nid'];
+      $addedFolderGroupID = $record['group_nid'];
+      watchdog('BroadSoft Code', 'Fetched cid ('.$addedFolderCategoryID.'), pid ('.$addedFolderCategoryPID.') for created filedepot folder ('.$node->title.')', NULL, WATCHDOG_NOTICE);
+      if($addedFolderCategoryPID != 0) { // if ==0, probably a root-level folder... it's group_id will be set correctly anyway by filedepot        
+        // get PARENT folder group_nid
+        $record = db_select('filedepot_categories', 't1')
+                  ->fields('t1', array('group_nid'))
+                  ->condition('t1.cid', $addedFolderCategoryPID, '=')
+                  ->execute()
+                  ->fetchAssoc();
+        if($record) {
+          // the PARENT's folder's group ID is found
+          $parentFolderGroupID = $record['group_nid'];          
+          // set the group ID both into filedepot_categories (for eventual sub-levels) and also (further below) for Drupal node filedepot_folder (for Drupal-OG access control)
+          $num_updated = db_update('filedepot_categories') 
+                          ->fields(array('group_nid' => $parentFolderGroupID,))
+                          ->condition('cid', $addedFolderCategoryID, '=')
+                          ->execute();
+          if($num_updated)
+            watchdog('BroadSoft Code', 'Updated table filedepot_categories with group ID  ('.$parentFolderGroupID.')', NULL, WATCHDOG_NOTICE);            
+        } else {
+          watchdog('BroadSoft Code', 'Cannot fetch parent of created filedepot folder ('.$node->title.')', NULL, WATCHDOG_ERROR);
+        }       
+      } // end of if($addedFolderCategoryPID != 0)
+      // adjust Drupal node filedepot_folder (for Drupal-OG access control)
+      $node = node_load($addedFolderCategoryNID);
+      // in case of root-level folder: $addedFolderGroupID will be set, otherwise, it will have a $parentFolderGroupID
+      bsutils_associateNode2Group($node, (($addedFolderGroupID!=0)?$addedFolderGroupID:$parentFolderGroupID), TRUE);
+    } else {
+      watchdog('BroadSoft Code', 'Cannot fetch cid for created filedepot folder ('.$node->title.')', NULL, WATCHDOG_ERROR);
+    }        
+  }
+}
+
+/** =============================================================================================
+* used by the Group View - Manager display
+*/
+function broadsoft_extranet_getAllGroupHTMLTable() {
+  $maxLen = 60;
+
+  $resStr = '<div>';
+  $resStr .= '<br>';
+  $resStr .= '<h4>All Available Groups</h4>';
+  $resStr .= '<table class="views-table cols-4" >';
+  $resStr .= '  
+     <thead>
+      <tr>
+        <th class="views-field views-field-title" >Group Name</th>
+        <th class="views-field views-field-title" >Description</th>
+        <th class="views-field views-field-title" >Group Owner</th>
+        <th class="views-field views-field-title" >Internal Group Name</th>
+      </tr>
+    </thead>
+  ';
+  
+  $resStr .= '<tbody>';
+
+  $groups = bum_helper_GetOG_Groups();
+  $toggleId = 0;
+  foreach($groups as $gid => $group) {
+    $toggleStr = (($toggleId++%2)?'even':'odd');
+    $gnode = node_load($gid);
+    $ownersStr = '';   
+    if(isset($gnode->field_group_owners) && array_key_exists($gnode->language, $gnode->field_group_owners)) {
+      foreach($gnode->field_group_owners[$gnode->language] as $i => $ownerData) {
+        $account=user_load($ownerData['target_id']);
+        if(strlen($ownersStr)>0)
+          $ownersStr .= '<br>';       
+        $ownersStr .= $account->name;
+      }
+    }
+    $bodyStr = '';
+    if(isset($gnode->body) && isset($gnode->body[$gnode->language]))
+      $bodyStr = substr($gnode->body[$gnode->language][0]['value'], 0, $maxLen).((strlen($gnode->body[$gnode->language][0]['value'])>$maxLen)?'...':'');
+    
+    $resStr .= '  
+      <tr class="'.$toggleStr.' views-field-title">
+      
+        <td class="views-field views-field-title" >'.$group['group_name'].'</td>
+        <td class="views-field views-field-title" >'.$bodyStr.'</td>
+        <td class="views-field views-field-title" >'.$ownersStr.'</td>
+        <td class="views-field views-field-title" >'.$gnode->field_ldap_group_name[$gnode->language][0]['value'].'</td>
+      </tr>
+      ';
+  }
+  
+  $resStr .= '</tbody>';
+  $resStr .= '</table>';
+  $resStr .= '</div>';
+  return $resStr;
+}
+
+?>

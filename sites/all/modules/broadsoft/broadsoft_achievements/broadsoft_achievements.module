@@ -1,0 +1,78 @@
+<?php
+/**
+ * @file
+ * Drupal needs this blank file.
+ */
+
+/**
+ * Implements hook_achievements_info().
+ */
+function broadsoft_achievements_achievements_info()
+{
+  $path = drupal_get_path('module', 'broadsoft_achievements') . '/badges/';
+  $achievements = array(
+    'comment-creation' => array(
+      'title' => t('Comment Creation'),
+      'achievements' => array(
+        'comment-count-5' => array(
+          'title' => t('Posted 2 comments!'),
+          'description' => t("We no longer think you're a spam bot. Maybe."),
+          'storage' => 'comment-count',
+          'points' => 2,
+          'images' => array(
+            'unlocked' => $path . 'badge-comment-unlocked.png',
+            'locked' => $path . 'badge-comment-locked.png',
+            'secret' => $path . 'badge-comment-secret.png',
+            // all default images have been replaced.
+          ),
+        ),
+      ),
+    ),
+    'node-creation' => array(
+      'title' => t('Article creation'),
+      'achievements' => array(
+        'node-count-5' => array(
+          'title' => t('Published 2 nodes'),
+          'description' => t("Go back to bed: it's still the weekend!"),
+          'points' => 2,
+          'images' => array(
+            'unlocked' => $path . 'article-node-unlocked.png',
+            'locked' => $path . 'article-node-locked.png',
+            'secret' => $path . 'article-node-secret.png',
+            // all default images have been replaced.
+          ),
+        ),
+      ),
+    ),
+  );
+
+  return $achievements;
+}
+
+/**
+ * Implements hook_comment_insert().
+ */
+function broadsoft_achievements_comment_insert($comment)
+{
+  $current_count = achievements_storage_get('comment-count', $comment->uid) + 1;
+  achievements_storage_set('comment-count', $current_count, $comment->uid);
+  foreach (array(2) as $count) {
+    if ($current_count == $count) {
+      achievements_unlocked('comment-count-' . $count, $comment->uid);
+    }
+  }
+}
+
+/**
+ * Implements hook_node_insert().
+ */
+function broadsoft_achievements_node_insert($node)
+{
+  $current_count = achievements_storage_get('node-count', $node->uid) + 1;
+  achievements_storage_set('node-count', $current_count, $node->uid);
+  foreach (array(2) as $count) {
+    if ($current_count == $count) {
+      achievements_unlocked('node-count-' . $count, $node->uid);
+    }
+  }
+}

@@ -1,0 +1,10 @@
+; $Id:
+name = BroadTouch Software
+description = Defines BroadTouch Software nodes and functionnality
+package = "Broadsoft"
+project = "Broadsoft"
+version = "7.1"
+core = "7.x"
+dependencies[] = file
+dependencies[] = taxonomy
+dependencies[] = broadsoft_ticketing_integration

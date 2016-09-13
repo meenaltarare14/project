@@ -1,0 +1,171 @@
+<?php
+
+/*---------------------------------------------------------------------------------------
+                                broadsoft_announcements
+                                    module
+                                    
+*** Description: 
+
+*** Notes: 
+                                    
+---------------------------------------------------------------------------------------*/
+  
+/*
+* Implements hook_menu
+*/
+
+function broadsoft_announcements_menu(){
+  $items = array();
+  $items['administration'] = array(
+      'title' =>'Announcement',
+      'description' => 'Announcement',
+      'page callback' =>'broadsoft_announcements_link',
+      'access callback' =>'broadsoft_admin_permission',
+
+    );
+  return $items;
+}
+
+/*
+* Call back function for administration menu
+*/
+function broadsoft_announcements_link(){
+  $output = '<a href="'.base_path().'node/add/announcement" >Add New Announcement</a>';
+  return $output;
+}
+
+/*
+* Access callback
+*/
+function broadsoft_admin_permission(){
+  global $user;
+  if(in_array('administrator', $user->roles)){
+    return TRUE;
+  }
+  else{
+    return FALSE;
+  }
+}
+
+/*
+* Implements hook_block_info
+*/
+function broadsoft_announcements_block_info(){
+  $blocks = array();
+  $blocks['annoucement_block'] =array(
+    'info' => t('Announcement Block'),
+    'cache' => DRUPAL_NO_CACHE,
+    );
+  $blocks['homepage_slider_block'] = array(
+    'info'=> t('Homepage Slider Block'),
+    'cache' => DRUPAL_NO_CACHE,
+    );
+    return $blocks;
+}
+
+/* 
+* Implements hook_block_view
+*/
+function broadsoft_announcements_block_view($delta =''){
+  drupal_add_css(drupal_get_path('module','broadsoft_announcements').'/broadsoft_announcements.css');
+  drupal_add_js(drupal_get_path('module','broadsoft_announcements').'/broadsoft_announcements.js');
+  $block =array();
+  switch ($delta){
+    case 'annoucement_block':
+    $block['subject'] = t('Announcement Block');
+    $block['content'] = get_announcements_list();
+    break;
+
+    case 'homepage_slider_block':
+    $block['subject'] = t('Homepage Slider Block');
+    $block['content'] = homepage_slider_content();
+      break;
+  }
+  return $block;
+}
+
+
+function get_announcements_list(){
+  $out = '';
+  $announcement_slider = array();
+  $announcement_list = array();
+  
+  $result = db_select('node', 'n')
+  ->fields('n',array('title','nid'))  
+  ->condition('status', 1)
+  ->condition('type', 'announcement')
+  ->execute()
+  ->fetchAll();
+
+  if(!empty($result)){
+    foreach ($result as $key => $value) { 
+      if(strlen($value->title) > 30){    
+        $title = substr($value->title, 0, 30).'...';
+      }else{
+        $title = $value->title;
+      }
+      $announcement_slider[] = '<li><a style="color:#fff" target="_blank" href="'.url(drupal_get_path_alias('node/' . $value->nid)).'">'.$title.'</a><i class="fa fa-angle-right" aria-hidden="true"></i></li>';
+      $announcement_list[] = '<li><a style="color:#fff" target="_blank" href="'.url(drupal_get_path_alias('node/' . $value->nid)).'">'.$value->title.'</a></li>';
+    }
+  }
+  
+
+  $out .='<div class="col-md-6 col-md-offset-3"><div class="col-md-1"><i class="fa fa-bullhorn" aria-hidden="true"></i></div>';
+  $out .='<div class="col-md-7"><p><div id="slider"><ul>';  
+  $out .=implode("", $announcement_slider);
+  $out .='</ul></div></div><div style="text-align:left;" class="col-md-3"></div>';
+
+  $out .='<div class="col-md-1"><i class="fa fa-plus show-announcement" aria-hidden="true"></i><ul class="announcement-list">';
+  $out .=implode("", $announcement_list);
+  $out .='</ul></div></div>';
+
+  return $out;
+
+}
+
+
+function homepage_slider_content(){
+  $output = '';
+
+  $query = db_select('node', 'n')
+  ->fields('n',array('title','nid'))  
+  ->condition('status', 1)
+  ->condition('type', 'homepage_slider')
+  ->execute()
+  ->fetchAll();
+
+  
+  $output .='<div id="myCarousel" class="carousel slide bgcarousel" data-ride="carousel"><div class="carousel-inner" role="listbox">';
+      
+  $first = TRUE;
+  if(!empty($query)){
+    foreach ($query as $key => $value) {
+      if($first){      
+        $active = 'active';
+        $first = FALSE;
+      }
+
+      $image_path = node_load($value->nid)->field_slider_image['und'][0]['uri'];
+      $output .='<div class="item '.$active.'">
+      <img src="'.file_create_url($image_path).'" alt="'.$value->title.'">
+      </div>';
+
+      $active = '';
+    }
+  }
+  
+  
+  $output .='</div>  
+    <!-- Left and right controls -->
+    <a class="left carousel-control" href="#myCarousel" role="button" data-slide="prev">
+      <i class="fa fa-angle-left" aria-hidden="true"></i>
+      <span class="sr-only">Previous</span>
+    </a>
+    <a class="right carousel-control" href="#myCarousel" role="button" data-slide="next">
+      <i class="fa fa-angle-right" aria-hidden="true"></i>
+      <span class="sr-only">Next</span>
+    </a>
+  </div>';
+
+  return $output;
+}

@@ -1,0 +1,10 @@
+; $Id:
+name = BroadWorks Patch Advisor
+description = Provide a BroadWorks Patch Advisor implementation off of xchange
+package = "Broadsoft"
+project = "Broadsoft"
+version = "7.3"
+core = "7.x"
+dependencies[] = broadsoft_software
+dependencies[] = broadsoft_statistics
+dependencies[] = broadsoft_utils

@@ -1,0 +1,455 @@
+.ticket__heading {
+  background: #f3f3f3;
+  padding: 16px 5% 19px;
+  border-bottom: 1px solid #ddd;
+  margin: 0;
+}
+.ticket__heading a {
+  text-decoration: none;
+  display: block;
+  outline: none;
+}
+.ticket__heading-text {
+  font-size: 14px;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #2a323e;
+  position: relative;
+}
+.ticket__heading-text_collapsed {
+  padding: 0 0 0 25px;
+}
+.ticket__heading-text_collapsed:before {
+  background: url(../img/icon-collapsed.png);
+  position: absolute;
+  content: "";
+  width: 8px;
+  height: 14px;
+  left: 0;
+  top: 0;
+  transition: all .35s ease-in-out;
+  transform: rotate(90deg);
+}
+.ticket__heading .collapsed .ticket__heading-text_collapsed:before {
+  transform: rotate(0);
+}
+.ticket__submit {
+  background: #76c430;
+  border-radius: 6px;
+  border: 0;
+  padding: 15px 30px;
+  cursor: pointer;
+  transition: all .35s ease-in-out;
+  box-sizing: border-box;
+  min-width: 180px;
+  display: inline-block;
+}
+.ticket__submit + .ticket__submit {
+  margin-left: 10px;
+}
+@media (max-width: 569px) {
+  .ticket__submit {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .ticket__submit + .ticket__submit {
+    margin: 10px auto 0;
+  }
+}
+.ticket__submit:hover {
+  background: #62a725;
+}
+.ticket__submit_disabled {
+  background: #b3b3b3;
+  cursor: default;
+}
+.ticket__submit_disabled:hover {
+  background: #b3b3b3;
+}
+.ticket__submit_style_ghost {
+  border: 2px solid #7fcc50;
+  padding: 13px 28px;
+  background: none;
+}
+.ticket__submit_style_ghost .ticket__submit-text {
+  color: #7fcc50;
+}
+.ticket__submit_style_ghost:hover {
+  background: none;
+  border-color: #62a725;
+}
+.ticket__submit_style_ghost:hover .ticket__submit-text {
+  color: #62a725;
+}
+.ticket__submit-line {
+  text-align: center;
+  padding: 25px 0 22px;
+  font-size: 0;
+}
+.ticket__submit-line_paddingBottom_77 {
+  padding-bottom: 77px;
+}
+.ticket__submit-text {
+  font-size: 14px;
+  color: #fff;
+  font-weight: 700;
+  transition: all .35s ease-in-out;
+}
+.ticket__submit_size_small {
+  min-width: 150px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.ticket__submit_size_small-text {
+  font-size: 13px;
+}
+.ticket__submit_width_224 {
+  width: 224px;
+}
+@media (max-width: 569px) {
+  .ticket__submit_width_224 {
+    display: block;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .ticket__submit_width_224 + .ticket__submit_width_224 {
+    margin: 10px auto 0;
+  }
+}
+.ticket__section {
+  padding: 30px 5%;
+  overflow: hidden;
+  position: relative;
+}
+.ticket__section-1 {
+  padding: 0 5%;
+}
+.ticket__section .inner {
+  margin: 0 -15px;
+}
+.ticket__section .desc-text {
+  color: #8e9197;
+  font-size: 12px;
+  display: block;
+  position: absolute;
+  top: 5px;
+  left: 5%;
+  font-style: italic;
+}
+.ticket__section.contact-preference {
+  border-bottom: 1px solid #ddd;
+}
+.ticket__section.contact-preference .contact-preference-text {
+  color: #8e9197;
+  font-size: 12px;
+  font-style: italic;
+  padding: 0 15px;
+}
+.ticket__section.contact-preference .form-group label {
+  margin-left: 0;
+}
+.ticket__section.contact-preference .left-group {
+  padding-right: 23px;
+}
+.ticket__section.contact-preference .right-group {
+  padding-left: 23px;
+}
+.ticket__section.contact-preference .form-group .form-control {
+  max-width: initial;
+  width: 100%;
+  padding: 6px 30px;
+  color: #8e9197;
+}
+.ticket__section.contact-preference .ticket__section__populated {
+  margin-top: 19px;
+}
+.ticket__section.contact-preference .ticket__section__email {
+  margin-top: 23px;
+}
+.ticket__section.contact-preference .form-group:last-child {
+  margin-bottom: 0;
+}
+.ticket__section.contact-preference .email-list {
+  position: relative;
+  width: 100%;
+  max-width: initial;
+}
+.ticket__section.contact-preference .email-list ul {
+  max-height: 165px;
+  overflow: auto;
+}
+.ticket__section.contact-preference .email-list__result {
+  position: absolute;
+  bottom: 14px;
+  width: 100%;
+  text-align: center;
+  font-size: 12px;
+  color: #8e9197;
+}
+.ticket__section .thankyou {
+  text-align: center;
+  margin: 50px 0 40px;
+}
+.ticket__section .thankyou .title {
+  font-size: 20px;
+}
+.ticket__section .thankyou p {
+  font-size: 15px;
+  color: #7fcc50;
+}
+.ticket__section .thankyou .list-btn {
+  list-style: none;
+  padding: 0;
+}
+.ticket__section .thankyou .ticket__submit-line {
+  margin: 30px 0 0;
+  border: none;
+}
+.ticket__section .thankyou .ticket__submit-line a {
+  text-decoration: none;
+}
+@media (min-width: 768px) {
+  .ticket__section_small {
+    padding: 30px 15%;
+  }
+}
+.ticket__section__populated {
+  margin-top: 10px;
+}
+.ticket__section__populated .form-group {
+  margin-bottom: 10px;
+}
+.ticket__section__populated .form-group .form-control {
+  border-radius: 0;
+  -webkit-border-radius: 0;
+  border: 1px solid #dddddd;
+  box-shadow: none;
+  -webkit-box-shadow: none;
+  height: 44px;
+}
+.ticket__section__populated .form-group label {
+  font-size: 12px;
+}
+.ticket__section__email {
+  margin-top: 10px;
+}
+.ticket__section__email .email-list {
+  border: 1px solid #dddddd;
+  background: #fff;
+}
+.ticket__section__email .email-list ul {
+  list-style: none;
+  padding: 15px 30px 16px;
+  margin: 0;
+}
+.ticket__section__email .email-list ul li {
+  font-size: 13px;
+  line-height: 1.3;
+  margin-bottom: 5px;
+}
+.ticket__section__email .ticket__title {
+  margin: 4px 0 2px;
+}
+.ticket__section__attachments {
+  border: 1px dashed #dddddd;
+  border-radius: 4px;
+  text-align: center;
+  position: relative;
+}
+.ticket__section__attachments h4 {
+  font-weight: 300;
+  font-size: 13px;
+  color: #8e9197;
+  margin: 27px 0 17px;
+}
+.ticket__section__attachments .fileUpload {
+  border: 2px solid #76c430;
+  width: 140px;
+  height: 40px;
+  margin: 0 auto;
+  line-height: 36px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #76c430;
+  border-radius: 5px;
+  position: relative;
+  overflow: hidden;
+}
+.ticket__section__attachments .fileUpload input.upload {
+  position: absolute;
+  top: 0;
+  right: 0;
+  margin: 0;
+  padding: 0;
+  font-size: 20px;
+  cursor: pointer;
+  opacity: 0;
+  filter: alpha(opacity=0);
+  width: 100%;
+}
+.ticket__section__attachments p {
+  font-size: 10px;
+  color: #8e9197;
+  margin: 17px 30px 27px;
+}
+.ticket__section__attachments__dropping {
+  position: absolute;
+  background: rgba(40, 47, 57, 0.8);
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  border-radius: 4px;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  z-index: 2;
+  font-weight: 700;
+}
+.ticket__section__attachments__finger {
+  position: absolute;
+  z-index: 3;
+  bottom: 0;
+  right: 22%;
+}
+.ticket__section__progressbar {
+  margin: 20px 0;
+}
+.ticket__section__progressbar .wrap-progress {
+  overflow: hidden;
+  position: relative;
+  margin: 30px 0 0;
+}
+.ticket__section__progressbar .wrap-progress:first-child {
+  margin: 0;
+}
+.ticket__section__progressbar .wrap-progress .file-name {
+  margin-bottom: 5px;
+}
+.ticket__section__progressbar .wrap-progress .file-name span {
+  font-size: 13px;
+  color: #282f39;
+}
+.ticket__section__progressbar .wrap-progress .file-name span.file-size {
+  color: #8e9197;
+}
+.ticket__section__progressbar .wrap-progress .file-name .btn-close {
+  display: block;
+  position: absolute;
+  right: 0;
+  top: 0;
+  color: #8e9197;
+}
+.ticket__section__progressbar .wrap-progress .file-name .btn-close:hover {
+  text-decoration: none;
+  color: #282f39;
+}
+.ticket .progress-container {
+  width: 100%;
+  height: 3px;
+  position: relative;
+  background-color: #cbcbcb;
+  border-radius: 2px;
+  -webkit-border-radius: 2px;
+}
+.ticket .progress-container .progressbar {
+  background-color: #76c430;
+  height: 100%;
+  position: absolute;
+  line-height: inherit;
+  top: 0;
+  left: 0;
+  bottom: 0;
+}
+.ticket__sources {
+  border: 1px solid #ddd;
+  border-width: 0 1px 1px;
+  border-radius: 0 0 4px 4px;
+}
+.ticket__title {
+  font-size: 0;
+  margin: 25px 0 8px;
+}
+.ticket__title_first {
+  margin-top: 5px;
+}
+.ticket__title-text {
+  font-size: 12px;
+  font-weight: 700;
+  color: #282f39;
+  display: inline-block;
+}
+.ticket__title-mandatory {
+  font-size: 12px;
+  font-weight: 700;
+  color: #eb5858;
+  display: inline-block;
+}
+.ticket__help {
+  background: url(../img/icon-help.png);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  display: inline-block;
+  margin: 0 0 0 7px;
+  position: relative;
+  top: 3px;
+}
+.ticket__tags {
+  font-size: 0;
+}
+.ticket__tag {
+  display: inline-block;
+  vertical-align: top;
+  position: relative;
+  padding: 19px 54px 16px 20px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}
+.ticket__tag-text {
+  font-size: 12px;
+  color: #76c430;
+  font-weight: 700;
+  display: inline-block;
+}
+.ticket__tag-remove {
+  cursor: pointer;
+  font-family: 'FontAwesome';
+  font-size: 14px;
+  color: #b5b5b5;
+  top: 50%;
+  transform: translateY(-50%);
+  position: absolute;
+  right: 20px;
+  line-height: 1;
+}
+.ticket__tag-remove:before {
+  content: "\f00d";
+}
+.ticket__thank-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #282f39;
+  margin: 25px 0 47px;
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .ticket__section__email .email-list {
+    max-width: 250px;
+    height: 200px;
+  }
+
+  .ticket__section__populated .form-group .form-control {
+    max-width: 190px;
+  }
+  .ticket__section__populated .form-group label {
+    margin-left: 10px;
+  }
+
+  .ticket__section__progressbar {
+    margin: 0;
+  }
+}

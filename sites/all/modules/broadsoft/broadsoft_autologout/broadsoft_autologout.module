@@ -1,0 +1,307 @@
+<?php
+
+/**
+ * @file
+ * Used to automagically log out a user after 30 mins
+ */
+
+
+/**
+ * Implements hook_menu().
+ */
+function broadsoft_autologout_menu() {
+  $items = array();
+
+  $items['broadsoft_autologout_ahah_logout'] = array(
+    'title' => 'JS Logout',
+    'page callback' => 'broadsoft_autologout_ahah_logout',
+    'access callback' => 'user_is_logged_in',
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['broadsoft_autologout_ahah_set_last'] = array(
+    'title' => 'JS Logout AHAH Set Last',
+    'page callback' => 'broadsoft_autologout_ahah_set_last',
+    'access callback' => 'user_is_logged_in',
+    'type' => MENU_CALLBACK,
+    'theme callback' => 'ajax_base_page_theme',
+    'delivery callback' => 'ajax_deliver',
+  );
+
+  $items['broadsoft_autologout_ajax_get_time_left'] = array(
+    'title' => 'JS Logout AJAX Get Time Until Logout',
+    'page callback' => 'broadsoft_autologout_ahah_get_remaining_time',
+    'access callback' => 'user_is_logged_in',
+    'type' => MENU_CALLBACK,
+    'theme callback' => 'ajax_base_page_theme',
+    'delivery callback' => 'ajax_deliver',
+  );
+
+  return $items;
+}
+
+
+/**
+ * Implements hook_init().
+ */
+function broadsoft_autologout_init() {
+  global $user;
+
+  if (empty($user->uid)) {
+    if (!empty($_GET['autologout_timeout']) && $_GET['autologout_timeout'] == 1 && empty($_POST)) {
+      _broadsoft_autologout_inactivity_message();
+    }
+    return;
+  }
+
+  // Check if JS should be included on this request.
+  if (broadsoft_autologout_prevent()) {
+    return;
+  }
+
+
+  $now = time();
+  $timeout = _broadsoft_autologout_get_user_timeout();
+  $timeout_padding = variable_get('autologout_padding', 10);
+  $redirect_url = variable_get('user/login');
+  $redirect_query = drupal_get_destination() + array('autologout_timeout' => 1);
+  drupal_add_library('system', 'ui.dialog');
+
+  $settings = array(
+    'timeout' => $timeout * 1000,
+    'redirect_url' => url($redirect_url, array('query' => $redirect_query)),
+    'title' => t('@name Alert', array('@name' => variable_get('site_name', 'Drupal'))),
+    'refresh_only' => 'TRUE'
+  );
+
+  // If this is an AJAX request, then the logout redirect url should still be
+  // referring to the page that generated this request
+  if (isset($_SERVER['HTTP_X_REQUESTED_WITH']) && strtolower($_SERVER['HTTP_X_REQUESTED_WITH']) == 'xmlhttprequest') {
+    global $base_url;
+    $relative_url = str_replace($base_url . '/', '', $_SERVER['HTTP_REFERER']);
+    $settings['redirect_url'] = url($redirect_url, array('query' => array('destination' => urlencode($relative_url)), 'autologout_timeout' => 1));
+  }
+
+  drupal_add_library('system', 'drupal.ajax');
+  drupal_add_js(array('broadsoft_autologout' => $settings), 'setting');
+  drupal_add_js(drupal_get_path('module', 'broadsoft_autologout') . "/broadsoft_autologout.js");
+
+  // We need a backup plan if JS is disabled.
+  if (isset($_SESSION['autologout_last'])) {
+    // If time since last access is > than the timeout + padding, log them out.
+    if (($now - $_SESSION['autologout_last']) >= ($timeout + (int) $timeout_padding)) {
+      _broadsoft_autologout_logout();
+
+      // User has changed so force Drupal to remake decisions based on user.
+      global $theme, $theme_key;
+      drupal_static_reset();
+      $theme = NULL;
+      $theme_key = NULL;
+      menu_set_custom_theme();
+      drupal_theme_initialize();
+      _broadsoft_autologout_inactivity_message();
+    }
+    else {
+      $_SESSION['autologout_last'] = $now;
+    }
+  }
+  else {
+    $_SESSION['autologout_last'] = $now;
+  }
+}
+
+/**
+ * Implements broadsoft_autologout_prevent().
+ */
+function broadsoft_autologout_prevent() {
+  global $user;
+
+  // Don't include autologout JS checks on ajax callbacks.
+  $paths = array(
+    'system',
+    'broadsoft_autologout_ajax_get_time_left',
+    'broadsoft_autologout_ahah_logout',
+    'broadsoft_autologout_ahah_set_last',
+  );
+
+  if (in_array(arg(0), $paths)) {
+    return TRUE;
+  }
+
+  // If user is anonymous or has no timeout set.
+  if (empty($user->uid) || (!_broadsoft_autologout_get_user_timeout())) {
+    return TRUE;
+  }
+
+}
+
+/**
+ * AJAX callback that returns the time remaining for this user is logged out.
+ */
+function broadsoft_autologout_ahah_get_remaining_time() {
+  $time_remaining_ms = broadsoft_autologout_get_remaining_time() * 1000;
+
+  // Reset the timer.
+  $markup = autologout_create_timer();
+  $commands = array();
+  $commands[] = ajax_command_replace('#timer', $markup);
+  $commands[] = ajax_command_settings(array('time' => $time_remaining_ms));
+
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+/**
+ * Ajax callback to reset the last access session variable.
+ */
+function broadsoft_autologout_ahah_set_last() {
+  $_SESSION['autologout_last'] = time();
+
+   // Let others act.
+  global $user;
+  module_invoke_all('auto_logout_session_reset', $user);
+
+  // Reset the timer.
+  $markup = autologout_create_timer();
+  $commands = array();
+  $commands[] = ajax_command_replace('#timer', $markup);
+
+  return array('#type' => 'ajax', '#commands' => $commands);
+}
+
+/**
+ * AJAX callback that performs the actual logout and redirects the user.
+ */
+function broadsoft_autologout_ahah_logout() {
+  _broadsoft_autologout_logout();
+  //drupal_exit();
+}
+
+/**
+ * Get the time remaining before logout.
+ *
+ * @return int
+ *   Number of seconds remaining.
+ */
+function broadsoft_autologout_get_remaining_time() {
+  $timeout = _broadsoft_autologout_get_user_timeout();
+  $time_passed = isset($_SESSION['autologout_last']) ? time() - $_SESSION['autologout_last'] : 0;
+  return $timeout - $time_passed;
+}
+
+
+
+
+/**
+ * Helper to perform the actual logout.
+ */
+function _broadsoft_autologout_logout() {
+  global $user;
+
+  if (variable_get('autologout_use_watchdog', FALSE)) {
+    watchdog('user', 'Session automatically closed for %name by autologout.', array('%name' => $user->name));
+  }
+
+  // Destroy the current session.
+  module_invoke_all('user_logout', $user);
+  session_destroy();
+
+  // Load the anonymous user.
+  $user = drupal_anonymous_user();
+}
+
+/**
+ * Display the inactivity message if required.
+ */
+function _broadsoft_autologout_inactivity_message() {
+  $message = 'You have been logged out due to inactivity.';
+  if (!empty($message)) {
+    drupal_set_message($message);
+  }
+}
+
+/**
+ * Determine if autologout should be prevented.
+ *
+ * @return bool
+ *   TRUE if there is a reason not to autologout
+ *   the current user on the current page.
+ */
+function _broadsoft_autologout_prevent() {
+  foreach (module_invoke_all('autologout_prevent') as $prevent) {
+    if (!empty($prevent)) {
+      return TRUE;
+    }
+  }
+
+  return FALSE;
+}
+
+
+
+/**
+ * Implements hook_user_login().
+ *
+ * Delete stale sessions for the user on login. This stops
+ * session_limit module thinking the user has reached their
+ * session limit.
+ */
+function broadsoft_autologout_user_login(&$edit, $account) {
+
+  // Cleanup old sessions.
+  $timeout = _broadsoft_autologout_get_user_timeout;
+
+  if (empty($timeout)) {
+    // Users that don't get logged have their sessions left.
+    return;
+  }
+
+  $now = time();
+  $timeout_padding = variable_get('autologout_padding', 10);
+  $timestamp = time() - ($timeout + $timeout_padding);
+
+  // Find all stale sessions.
+  $results = db_select('sessions', 's')
+    ->fields('s')
+    ->condition('uid', $account->uid)
+    ->condition('timestamp', $timestamp, '<')
+    ->orderBy('timestamp', 'DESC')
+    ->execute();
+
+  $sids = array();
+  foreach ($results as $session) {
+    $sids[] = $session->sid;
+  }
+
+  if (!empty($sids)) {
+    // Delete stale sessions at login.
+    db_delete('sessions')
+      ->condition('sid', $sids, 'IN')
+      ->execute();
+  }
+}
+
+
+/**
+ * Get a user's timeout in seconds.
+ */
+function _broadsoft_autologout_get_user_timeout() {
+  return '1800'; // 30 minutes
+}
+
+
+/**
+ * Implements hook_page_build().
+ *
+ * Add a form element to every page which is used to detect if the page was
+ * loaded from browser cache. This happens when the browser's back button is
+ * pressed for example. The JS will set the value of the hidden input element
+ * to 1 after initial load. If this is 1 on subsequent loads, the page was
+ * loaded from cache and an autologout timeout refresh needs to be triggered.
+ */
+function broadsoft_autologout_page_build(&$page) {
+  if (!_broadsoft_autologout_prevent()) {
+    $page['page_bottom']['autologout'] = array(
+      '#markup' => '<form id="autologout-cache-check"><input type="hidden" id="autologout-cache-check-bit" value="0" /></form>',
+    );
+  }
+}

@@ -1,0 +1,109 @@
+<?php
+
+define("MESSAGE_POPUP_ID",  "message_popup");
+
+/** ============================================================================================= 
+  param  : an array to add to DB. May contain non-standard chars
+  return : a string to insert directly into the DB
+ */
+function broadsoft_utils_helper_array2str($arr) {
+  $arrtmp = array();
+  foreach($arr as $k => $v) {
+    $arrtmp[$k] = base64_encode($v);
+  }
+  return(json_encode($arrtmp));
+}
+
+/**
+  param  : a string taken directly from the DB
+  return : an array
+ */
+function broadsoft_utils_helper_str2array($str) {
+  $arrtmp = json_decode("{".$str."}"); // no clue why json encode-decode doesn't work without this.
+  $retarr = array();
+  
+  foreach($arrtmp as $k => $v) {
+    $retarr[$k] = base64_decode($v);
+  }
+
+  return $retarr;
+}
+
+/** =============================================================================================
+*/
+function broadsoft_utils_generate_message_popup_html($message) {
+  $ret = '
+    <div id="'.MESSAGE_POPUP_ID.'">
+      <div style="margin-left: 23px;">
+        <p>'.$message.'</p>
+      </div>
+    </div>';
+  return $ret;
+}
+
+/** =============================================================================================
+*/
+function broadsoft_utils_generate_critical_widget_js($buttonText, $widgetID /* e.g. critical radio button id*/, $isDropdown /* is DD on D7 */) {
+  $retJS = '';
+  
+  $JQPrefix = isD6()?"$":"jQuery";
+  $DialogJS = 
+    // vvvvv dialog element
+    $JQPrefix.'("#'.MESSAGE_POPUP_ID.'").dialog({ 
+      modal: true,
+      draggable: false,
+      resizable: false,
+      autoOpen: false,
+      position: [\'center\', \'center\'],
+      width: 600,
+      closeOnEscape: false,
+      dialogClass: \'message_popup_div\',
+      buttons: {
+        "'.$buttonText.'": function() {
+          '.$JQPrefix.'(this).dialog("close");
+        }
+      }
+    });';
+    // ^^^^^ dialog element
+  
+  $SeverityWidgetConnectJS = '
+    '.$JQPrefix.'(document).ready(function() {
+      '.$JQPrefix.'(\'#'.$widgetID.'\').change(function() {';
+  if($isDropdown) {
+    // Note: radio button widget change() hook initialization - no need to verify the value
+    // Note dropdown widget change() hook initialization - need to verify if selected the critical value
+    $SeverityWidgetConnectJS .= 'if('.$JQPrefix.'(\'#'.$widgetID.' option:selected\').val()=="CRITICAL") {';
+  }
+  $SeverityWidgetConnectJS .= $JQPrefix.'(\'#'.MESSAGE_POPUP_ID.'\').dialog(\'open\');';
+  if($isDropdown) {
+    $SeverityWidgetConnectJS .= '}';
+  }
+  $SeverityWidgetConnectJS .= '
+      });
+    });
+  ';
+
+  // Drupal 6/7 specific jQuery attach method & library load
+  if(isD6()) {
+    jquery_ui_add("ui.dialog"); 
+    $retJS = '
+      Drupal.behaviors.broadsoft_ticketing_integration =  function(context) {' // drupal 6 attach
+        .$DialogJS
+        .$SeverityWidgetConnectJS
+      .'};
+    ';
+  } else {
+    drupal_add_library('system', 'ui.dialog');    
+    $retJS = '
+      '.$JQPrefix.'(document).ready(function() {'
+          .$DialogJS.
+        '}
+      );
+    '
+    .$SeverityWidgetConnectJS;
+  }
+  
+  return $retJS;
+}
+
+?>

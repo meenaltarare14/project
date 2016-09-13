@@ -1,0 +1,40 @@
+name = Mantis Broadsoft
+description = A custom template from GetVentive.
+screenshot = screenshot.png
+core = 7.x
+
+;-- Required Regions
+regions[page_top] = Page Top
+regions[content] = Content
+regions[page_bottom] = Page Bottom
+
+;-- Core Regions
+regions[header] = Header
+regions[slider] = Slider
+regions[footer] = Footer
+regions[sidebar_first] = Sidebar First
+regions[sidebar_second] = Sidebar Second
+regions[help] = Help
+regions[announcments] = Announcments
+regions[highlighted] = Highlighted
+
+;-- Plugins
+plugins[panels][layouts] = layouts
+
+;-------------- C S S -------------
+stylesheets[all][] = css/font-awesome.min.css
+stylesheets[all][] = css/bootstrap.min.css
+stylesheets[all][] = css/global.css
+stylesheets[all][] = css/global_v2.css
+stylesheets[all][] = css/modal.css
+stylesheets[all][] = css/elements.css
+stylesheets[all][] = css/ticket.css
+stylesheets[all][] = css/newticket.css
+stylesheets[all][] = css/mantis.css
+
+;-------------- JS -------------
+scripts[] = js/jquery.ui.touch-punch.min.js
+scripts[] = js/bootstrap.min.js
+scripts[] = js/global.js
+scripts[] = js/jquery-ui-1.9.2.custom.min.js
+

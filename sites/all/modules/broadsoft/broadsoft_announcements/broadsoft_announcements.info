@@ -1,0 +1,6 @@
+name = BroadSoft Announcements
+description = Allows administrators to add announcemnts for users
+package = "Broadsoft"
+project = "Broadsoft"
+version = "7.0"
+core = "7.x"

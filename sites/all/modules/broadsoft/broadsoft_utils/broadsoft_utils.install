@@ -1,0 +1,61 @@
+<?php
+
+/**
+-- Table structure for table `user_data`
+--
+
+DROP TABLE IF EXISTS `user_data`;
+SET @saved_cs_client     = @@character_set_client;
+SET character_set_client = utf8;
+CREATE TABLE `user_data` (
+  `uid` int(10) unsigned NOT NULL auto_increment,
+  `type` varchar(32) NOT NULL default '',
+  `data` longtext,
+  PRIMARY KEY  (`uid`,`type`)
+) ENGINE=MyISAM AUTO_INCREMENT=12177 DEFAULT CHARSET=utf8;
+SET character_set_client = @saved_cs_client;
+  
+ * 
+ */
+function broadsoft_utils_enable() {
+  // https://api.drupal.org/api/drupal/includes!database!schema.inc/group/schemaapi/7
+  $table_spec = array(
+    'fields' => array(
+      'uid' => array(
+        'type' => 'serial', // auto increment
+        'not null' => TRUE,  
+      ),
+      'user_uid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,  
+        'not null' => TRUE,  
+      ),
+      'type' => array(
+        'type' => 'varchar',
+        'length' => 32,
+        'not null' => TRUE,  
+        'default' => '',
+      ),
+      'data' => array(
+        'mysql_type' => 'longtext',
+      ),
+    ),
+    'unique keys' => array( 'uid' => array('uid') ),
+    'primary key' => array('uid'),
+  );
+  if( !db_table_exists('user_data') ){
+    db_create_table('user_data', $table_spec);
+  }
+}
+
+/**
+ * 
+ */
+function broadsoft_utils_uninstall() {
+  // https://api.drupal.org/api/drupal/includes!database!schema.inc/group/schemaapi/7
+  if( db_table_exists('user_data') ){
+    db_drop_table('user_data');
+  }
+}
+
+?>

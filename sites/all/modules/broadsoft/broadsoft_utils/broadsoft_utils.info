@@ -1,0 +1,9 @@
+; $Id:
+name = BroadSoft Utils
+description = Provides utilities used by most other BroadSoft modules
+package = "Broadsoft"
+project = "Broadsoft"
+version = "7.1"
+core = "7.x"
+
+dependencies[] = broadsoft_statistics

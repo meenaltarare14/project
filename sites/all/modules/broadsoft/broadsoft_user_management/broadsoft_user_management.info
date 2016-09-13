@@ -1,0 +1,13 @@
+name = BroadSoft User Management
+description = ALL User & Custom Access Rights Functionnality
+package = Broadsoft
+project = Broadsoft
+dependencies[] = email_registration
+dependencies[] = broadsoft_utils
+configure = admin/config/people/broadsoft_user_management
+version = 7.1
+core = 7.x
+files[] = broadsoft_user_management.module
+files[] = broadsoft_user_management.admin.inc
+files[] = LDAPIntegration.class.php
+files[] = broadsoft_user_management.forms

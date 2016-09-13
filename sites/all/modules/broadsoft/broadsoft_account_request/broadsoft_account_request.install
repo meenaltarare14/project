@@ -1,0 +1,185 @@
+<?php
+
+
+/**
+ * Implements hook_schema().
+ */
+function broadsoft_account_request_schema() {
+  $schema['broadsoft_log'] = array(
+    'description' => 'User account_tmp_info table.',
+    'fields' => array(
+      'id' => array(
+        'description' => 'The primary identifier for a account request.',
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+      ),
+      'uid' => array(
+        'description' => 'User id',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+      'name' => array(
+        'description' => 'User name',
+        'type' => 'varchar',
+        'length' => 16,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'message' => array(
+        'description' => 'User message',
+        'type' => 'text',
+        'size' => 'medium',
+        'not null' => TRUE,
+      ),
+      'variables' => array(
+        'description' => 'User variables',
+        'type' => 'text',
+        'size' => 'medium',
+        'not null' => TRUE,
+      ),
+      'severity' => array(
+        'description' => 'User severity',
+        'type' => 'int',
+        'size' => 'tiny',
+        'length' => 3,
+        'not null' => TRUE,
+        'unsigned' => TRUE,
+        'default' => 0,
+      ),
+      'link' => array(
+        'description' => 'User link',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'location' => array(
+        'description' => 'User location',
+        'type' => 'text',
+        'not null' => TRUE,
+       ),
+      'referer' => array(
+        'description' => 'User referer',
+        'type' => 'text',
+        'not null' => TRUE,
+      ),
+      'hostname' => array(
+        'description' => 'User hostname',
+        'type' => 'varchar',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'timestamp' => array(
+        'description' => 'User timestamp',
+        'type' => 'int',
+        'length' => 11,
+        'not null' => TRUE,
+        'default' => 0,
+      ),
+
+    ),
+    // Index 'rating' field to speed up retrieval of rows based on rating.
+    'indexes' => array(
+      'id_uid' => array('id', 'uid'),
+    ),
+    'primary key' => array('id'),
+  );
+
+  $schema['account_tmp_info'] = array(
+    'description' => 'User account_tmp_info table.',
+    'fields' => array(
+      'token' => array(
+        'description' => 'User token',
+        'type' => 'varchar',
+        'length' => 40,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'email' => array(
+        'description' => 'User email',
+        'type' => 'varchar',
+        'length' => 250,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'request_timestamp' => array(
+        'description' => 'User request_timestamp',
+        'mysql_type' => 'timestamp',
+        'not null' => TRUE
+      ),
+      'first_name' => array(
+        'description' => 'User first_name',
+        'type' => 'varchar',
+        'length' => 100,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'last_name' => array(
+        'description' => 'User last_name',
+        'type' => 'varchar',
+        'length' => 100,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'company' => array(
+        'description' => 'User company',
+        'type' => 'varchar',
+        'length' => 100,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'title' => array(
+        'description' => 'User title',
+        'type' => 'varchar',
+        'length' => 100,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'location' => array(
+        'description' => 'User location',
+        'type' => 'varchar',
+        'length' => 100,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'rid' => array(
+        'description' => 'User rid',
+        'type' => 'int',
+        'length' => 10,
+        'default' => 0,
+        'unsigned' => TRUE,
+      ),
+    ),
+    'primary key' => array('token', 'email'),
+  );
+
+  return $schema;
+}
+
+/**
+ * Implements hook_enabled().
+ *
+ */
+function broadsoft_account_request_enabled() {
+  db_query('ALTER TABLE {account_tmp_info} MODIFY request_timestamp TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP');
+}
+
+/**
+ * Implements hook_update_N().
+ *
+ */
+function broadsoft_account_request_install() {
+  // TODO broadsoft_log & account_tmp_info Table structure is required to install this table into Drupal Database.
+}
+
+/**
+ * Implements hook_update_N().
+ *
+ * Increase module weight so dependent modules get loaded first.
+ */
+function broadsoft_account_request_update_7001() {
+  db_query("UPDATE {system} SET weight = 1000 WHERE type = 'module' AND name = 'broadsoft_account_request'");
+}
